@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+    spec:
+      containers:
+        - name: payments-api
+          image: kongroo-payments:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: payments-config
+            - secretRef:
+                name: payments-secret

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-config
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  Jwt__Issuer: "Kongroo.Identity.Api"
+  Jwt__Audience: "Kongroo.Identity.Api"
+  Jwt__AccessTokenLifetimeMinutes: "15"
+  OutboxProcessing__PollingInterval: "00:00:05"
+  OutboxProcessing__BatchSize: "20"
