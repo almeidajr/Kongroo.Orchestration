@@ -24,6 +24,7 @@ repos/
 | payments-api | 5103 | Payment processing |
 | notifications-api | 5104 | Notifications (email simulation) |
 | postgres | 5432 | PostgreSQL (all databases) |
+| rabbitmq | 5672 / 15672 | Message broker (AMQP / management UI) |
 
 ## Running with Docker Compose
 
@@ -31,8 +32,21 @@ repos/
 docker compose up --build
 ```
 
-This starts all 4 services and PostgreSQL. The `init-db.sql` script creates the
+This starts all 4 application services, PostgreSQL, and RabbitMQ. The `init-db.sql` script creates the
 required databases on first run.
+
+### Publishing images to Docker Hub
+
+compose tags built images as `josealmeidajr/kongroo-<service>:dev`. To publish them:
+
+```bash
+docker compose build
+docker compose push
+```
+
+Kubernetes pulls the pinned `josealmeidajr/kongroo-<service>:0.0.1` tag (see `k8s/`), which is published separately from the moving `:dev` tag used locally.
+
+The RabbitMQ management UI is available at http://localhost:15672 (user `kongroo`, password `development`).
 
 ## Deploying to Kubernetes (local cluster)
 

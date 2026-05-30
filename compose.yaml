@@ -7,10 +7,32 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kongroo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: kongroo
+      RABBITMQ_DEFAULT_PASS: development
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   identity-api:
+    image: josealmeidajr/kongroo-identity:dev
     build:
       context: ../Kongroo.Identity
       dockerfile: Dockerfile
@@ -27,10 +49,17 @@ services:
       BootstrapAdmin__Email: "developer@kongroo.dev"
       BootstrapAdmin__Password: "Sup3rSecure!"
       BootstrapAdmin__Name: "Developer"
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "kongroo"
+      RabbitMq__Password: "development"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   catalog-api:
+    image: josealmeidajr/kongroo-catalog:dev
     build:
       context: ../Kongroo.Catalog
       dockerfile: Dockerfile
@@ -43,10 +72,17 @@ services:
       Jwt__Audience: "Kongroo.Identity.Api"
       Jwt__SigningKey: "Development.SigningKey.AtLeast32Characters!"
       Jwt__AccessTokenLifetimeMinutes: "15"
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "kongroo"
+      RabbitMq__Password: "development"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   payments-api:
+    image: josealmeidajr/kongroo-payments:dev
     build:
       context: ../Kongroo.Payments
       dockerfile: Dockerfile
@@ -55,10 +91,17 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Database: "Host=postgres;Database=kongroo_payments;Username=kongroo;Password=development"
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "kongroo"
+      RabbitMq__Password: "development"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 
   notifications-api:
+    image: josealmeidajr/kongroo-notifications:dev
     build:
       context: ../Kongroo.Notifications
       dockerfile: Dockerfile
@@ -66,6 +109,12 @@ services:
       - "5104:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "kongroo"
+      RabbitMq__Password: "development"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   postgres-data:
