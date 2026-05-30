@@ -12,3 +12,4 @@ data:
   BootstrapAdmin__Username: "admin"
   BootstrapAdmin__Email: "admin@kongroo.dev"
   BootstrapAdmin__Name: "Administrator"
+  RabbitMq__Host: "rabbitmq"

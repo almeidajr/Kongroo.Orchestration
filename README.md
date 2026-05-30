@@ -54,6 +54,7 @@ Update all passwords and signing keys in `k8s/**/secret.yaml` before applying.
 
 ```bash
 kubectl apply -f k8s/postgres/
+kubectl apply -f k8s/rabbitmq/
 kubectl apply -f k8s/identity/
 kubectl apply -f k8s/catalog/
 kubectl apply -f k8s/payments/

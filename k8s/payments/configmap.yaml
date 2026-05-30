@@ -4,3 +4,4 @@ metadata:
   name: payments-config
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
+  RabbitMq__Host: "rabbitmq"

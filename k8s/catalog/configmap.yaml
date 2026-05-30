@@ -9,3 +9,4 @@ data:
   Jwt__AccessTokenLifetimeMinutes: "15"
   OutboxProcessing__PollingInterval: "00:00:05"
   OutboxProcessing__BatchSize: "20"
+  RabbitMq__Host: "rabbitmq"

@@ -4,3 +4,4 @@ metadata:
   name: notifications-config
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
+  RabbitMq__Host: "rabbitmq"

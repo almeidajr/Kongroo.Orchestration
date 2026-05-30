@@ -14,7 +14,8 @@ spec:
     spec:
       containers:
         - name: payments-api
-          image: kongroo-payments:latest
+          image: josealmeidajr/kongroo-payments:0.0.1
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           envFrom:

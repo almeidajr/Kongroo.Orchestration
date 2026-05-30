@@ -27,7 +27,7 @@ spec:
                   key: POSTGRES_PASSWORD
           volumeMounts:
             - name: storage
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
             - name: init-db
               mountPath: /docker-entrypoint-initdb.d
       volumes:
