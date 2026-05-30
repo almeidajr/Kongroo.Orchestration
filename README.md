@@ -52,6 +52,17 @@ The RabbitMQ management UI is available at http://localhost:15672 (user `kongroo
 
 Update all passwords and signing keys in `k8s/**/secret.yaml` before applying.
 
+Deploy everything with a single command (kustomize creates ConfigMaps, Secrets
+and Services before Deployments):
+
+```bash
+kubectl apply -k k8s/
+
+kubectl get pods
+```
+
+Or apply each component in dependency order (PostgreSQL and RabbitMQ first):
+
 ```bash
 kubectl apply -f k8s/postgres/
 kubectl apply -f k8s/rabbitmq/
