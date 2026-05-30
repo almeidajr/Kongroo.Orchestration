@@ -3,5 +3,5 @@ kind: ConfigMap
 metadata:
   name: payments-config
 data:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
   RabbitMq__Host: "rabbitmq"

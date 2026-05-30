@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: catalog-config
 data:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
   Jwt__Issuer: "Kongroo.Identity.Api"
   Jwt__Audience: "Kongroo.Identity.Api"
   Jwt__AccessTokenLifetimeMinutes: "15"
