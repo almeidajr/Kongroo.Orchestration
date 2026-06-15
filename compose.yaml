@@ -50,8 +50,8 @@ services:
       BootstrapAdmin__Password: "Sup3rSecure!"
       BootstrapAdmin__Name: "Developer"
       RabbitMq__Host: "rabbitmq"
-      RabbitMq__Username: "kongroo"
-      RabbitMq__Password: "development"
+      RabbitMq__User: "kongroo"
+      RabbitMq__Pass: "development"
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,8 +73,8 @@ services:
       Jwt__SigningKey: "Development.SigningKey.AtLeast32Characters!"
       Jwt__AccessTokenLifetimeMinutes: "15"
       RabbitMq__Host: "rabbitmq"
-      RabbitMq__Username: "kongroo"
-      RabbitMq__Password: "development"
+      RabbitMq__User: "kongroo"
+      RabbitMq__Pass: "development"
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,8 +92,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Database: "Host=postgres;Database=kongroo_payments;Username=kongroo;Password=development"
       RabbitMq__Host: "rabbitmq"
-      RabbitMq__Username: "kongroo"
-      RabbitMq__Password: "development"
+      RabbitMq__User: "kongroo"
+      RabbitMq__Pass: "development"
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,8 +110,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       RabbitMq__Host: "rabbitmq"
-      RabbitMq__Username: "kongroo"
-      RabbitMq__Password: "development"
+      RabbitMq__User: "kongroo"
+      RabbitMq__Pass: "development"
     depends_on:
       rabbitmq:
         condition: service_healthy
