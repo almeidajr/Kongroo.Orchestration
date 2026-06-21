@@ -12,6 +12,7 @@ resources:
   - postgres/service.yaml
   - rabbitmq/configmap.yaml
   - rabbitmq/secret.yaml
+  - rabbitmq/pvc.yaml
   - rabbitmq/deployment.yaml
   - rabbitmq/service.yaml
   - identity
