@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:18.3
+          image: postgres:18.4
           ports:
             - containerPort: 5432
           env:
@@ -25,6 +25,24 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "kongroo", "-h", "127.0.0.1"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "kongroo", "-h", "127.0.0.1"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
           volumeMounts:
             - name: storage
               mountPath: /var/lib/postgresql
