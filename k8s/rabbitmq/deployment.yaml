@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: rabbitmq
-          image: rabbitmq:4-management
+          image: rabbitmq:4.3-management
           ports:
             - containerPort: 5672
             - containerPort: 15672
@@ -34,9 +34,31 @@ spec:
                 configMapKeyRef:
                   name: rabbitmq-config
                   key: RABBITMQ_DEFAULT_VHOST
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          startupProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            periodSeconds: 10
+            failureThreshold: 18
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+            periodSeconds: 15
+            timeoutSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            periodSeconds: 30
+            timeoutSeconds: 15
           volumeMounts:
             - name: storage
               mountPath: /var/lib/rabbitmq
       volumes:
         - name: storage
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: rabbitmq-pvc
