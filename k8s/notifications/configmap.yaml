@@ -3,5 +3,5 @@ kind: ConfigMap
 metadata:
   name: notifications-config
 data:
-  ASPNETCORE_ENVIRONMENT: "Development"
+  ASPNETCORE_ENVIRONMENT: "Production"
   RabbitMq__Host: "rabbitmq"

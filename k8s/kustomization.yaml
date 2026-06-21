@@ -1,11 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Deploy everything with a single command:
-#   kubectl apply -k k8s/
-# kustomize applies ConfigMaps/Secrets/Services before Deployments automatically.
+namespace: kongroo
 
 resources:
+  - namespace.yaml
   - postgres/configmap.yaml
   - postgres/secret.yaml
   - postgres/pvc.yaml
@@ -15,19 +14,20 @@ resources:
   - rabbitmq/secret.yaml
   - rabbitmq/deployment.yaml
   - rabbitmq/service.yaml
-  - identity/configmap.yaml
-  - identity/secret.yaml
-  - identity/deployment.yaml
-  - identity/service.yaml
-  - catalog/configmap.yaml
-  - catalog/secret.yaml
-  - catalog/deployment.yaml
-  - catalog/service.yaml
-  - payments/configmap.yaml
-  - payments/secret.yaml
-  - payments/deployment.yaml
-  - payments/service.yaml
-  - notifications/configmap.yaml
-  - notifications/secret.yaml
-  - notifications/deployment.yaml
-  - notifications/service.yaml
+  - identity
+  - catalog
+  - payments
+  - notifications
+
+images:
+  - name: josealmeidajr/kongroo-identity
+    newTag: "0.0.5"
+  - name: kongroo-catalog
+    newName: josealmeidajr/kongroo-catalog
+    newTag: "0.0.4"
+  - name: kongroo-payments
+    newName: josealmeidajr/kongroo-payments
+    newTag: "0.0.3"
+  - name: kongroo-notifications
+    newName: josealmeidajr/kongroo-notifications
+    newTag: "0.0.3"

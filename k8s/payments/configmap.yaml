@@ -3,5 +3,9 @@ kind: ConfigMap
 metadata:
   name: payments-config
 data:
-  ASPNETCORE_ENVIRONMENT: "Development"
+  ASPNETCORE_ENVIRONMENT: "Production"
   RabbitMq__Host: "rabbitmq"
+  Payments__ApprovalLimit: "1000.00"
+  Jwt__Issuer: "Kongroo.Identity.Api"
+  Jwt__Audience: "Kongroo.Identity.Api"
+  Jwt__AccessTokenLifetimeMinutes: "15"

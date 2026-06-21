@@ -44,34 +44,32 @@ docker compose build
 docker compose push
 ```
 
-Kubernetes pulls the pinned `josealmeidajr/kongroo-<service>:0.0.1` tag (see `k8s/`), which is published separately from the moving `:dev` tag used locally.
+Kubernetes pulls the pinned `josealmeidajr/kongroo-<service>:<tag>` tags (centralized in `k8s/kustomization.yaml` under `images:`), which are published separately from the moving `:dev` tag used locally.
 
 The RabbitMQ management UI is available at http://localhost:15672 (user `kongroo`, password `development`).
 
-## Deploying to Kubernetes (local cluster)
+## Deploy to Kubernetes
 
-Update all passwords and signing keys in `k8s/**/secret.yaml` before applying.
+The per-service manifests under `k8s/identity`, `k8s/catalog`, `k8s/payments`,
+and `k8s/notifications` are **generated** from the sibling service repos by
+`sync.ps1` — do not edit them by hand. Re-generate after any service-repo
+manifest change:
 
-Deploy everything with a single command (kustomize creates ConfigMaps, Secrets
-and Services before Deployments):
+```powershell
+./sync.ps1            # regenerate k8s/<service>/ from ../Kongroo.*
+./sync.ps1 -Check     # verify in sync (exit 1 on drift)
+# -ReposRoot <path> if the service repos aren't in the parent directory
+```
+
+Deploy the whole stack (PostgreSQL, RabbitMQ, and the four services) into the
+`kongroo` namespace with a single command:
 
 ```bash
 kubectl apply -k k8s/
-
-kubectl get pods
+kubectl get pods -n kongroo
 ```
 
-Or apply each component in dependency order (PostgreSQL and RabbitMQ first):
-
-```bash
-kubectl apply -f k8s/postgres/
-kubectl apply -f k8s/rabbitmq/
-kubectl apply -f k8s/identity/
-kubectl apply -f k8s/catalog/
-kubectl apply -f k8s/payments/
-kubectl apply -f k8s/notifications/
-
-kubectl get pods
-```
-
-All pods should reach `Running` status within a few seconds.
+Kustomize creates the namespace and orders ConfigMaps/Secrets/Services before
+Deployments automatically. Images are pulled from the pinned
+`josealmeidajr/kongroo-<service>:<tag>` Docker Hub tags (centralized in
+`k8s/kustomization.yaml` under `images:`).
