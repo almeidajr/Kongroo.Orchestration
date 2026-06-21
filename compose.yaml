@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:18.3
+    image: postgres:18.4
     environment:
       POSTGRES_USER: kongroo
       POSTGRES_PASSWORD: development
@@ -17,13 +17,15 @@ services:
       start_period: 10s
 
   rabbitmq:
-    image: rabbitmq:4-management
+    image: rabbitmq:4.3-management
     environment:
       RABBITMQ_DEFAULT_USER: kongroo
       RABBITMQ_DEFAULT_PASS: development
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -118,3 +120,4 @@ services:
 
 volumes:
   postgres-data:
+  rabbitmq-data:
