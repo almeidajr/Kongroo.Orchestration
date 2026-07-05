@@ -1,4 +1,4 @@
-# Kongroo.Orchestration
+# <img alt="Kongroo" src="./logo.png" width="40"/> Kongroo.Orchestration
 
 Central orchestration repository for FIAP Cloud Games Phase 2 microservices.
 
@@ -17,14 +17,14 @@ repos/
 
 ## Services
 
-| Service | Local Port | Description |
-|---|---|---|
-| identity-api | 5101 | User registration and authentication |
-| catalog-api | 5102 | Game catalog and user library |
-| payments-api | 5103 | Payment processing |
-| notifications-api | 5104 | Notifications (email simulation) |
-| postgres | 5432 | PostgreSQL (all databases) |
-| rabbitmq | 5672 / 15672 | Message broker (AMQP / management UI) |
+| Service           | Local Port   | Description                           |
+| ----------------- | ------------ | ------------------------------------- |
+| identity-api      | 5101         | User registration and authentication  |
+| catalog-api       | 5102         | Game catalog and user library         |
+| payments-api      | 5103         | Payment processing                    |
+| notifications-api | 5104         | Notifications (email simulation)      |
+| postgres          | 5432         | PostgreSQL (all databases)            |
+| rabbitmq          | 5672 / 15672 | Message broker (AMQP / management UI) |
 
 ## Running with Docker Compose
 

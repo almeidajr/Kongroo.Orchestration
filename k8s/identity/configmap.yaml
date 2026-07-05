@@ -7,8 +7,6 @@ data:
   Jwt__Issuer: "Kongroo.Identity.Api"
   Jwt__Audience: "Kongroo.Identity.Api"
   Jwt__AccessTokenLifetimeMinutes: "15"
-  OutboxProcessing__PollingInterval: "00:00:05"
-  OutboxProcessing__BatchSize: "20"
   BootstrapAdmin__Username: "admin"
   BootstrapAdmin__Email: "admin@kongroo.dev"
   BootstrapAdmin__Name: "Administrator"

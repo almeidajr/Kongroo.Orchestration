@@ -41,12 +41,14 @@ spec:
               cpu: 150m
               memory: 256Mi
             limits:
+              cpu: 500m
               memory: 512Mi
           startupProbe:
             exec:
               command: ["rabbitmq-diagnostics", "-q", "ping"]
             periodSeconds: 10
             failureThreshold: 18
+            timeoutSeconds: 10
           readinessProbe:
             exec:
               command: ["rabbitmq-diagnostics", "-q", "check_port_connectivity"]

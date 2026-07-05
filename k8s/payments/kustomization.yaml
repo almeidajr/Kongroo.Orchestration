@@ -12,7 +12,7 @@ labels:
   - pairs:
       app.kubernetes.io/name: payments-api
       app.kubernetes.io/instance: payments-api
-      app.kubernetes.io/version: "0.0.3"
+      app.kubernetes.io/version: "0.0.4"
       app.kubernetes.io/component: api
       app.kubernetes.io/part-of: kongroo
       app.kubernetes.io/managed-by: kustomize
