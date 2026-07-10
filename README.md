@@ -26,6 +26,10 @@ repos/
 | postgres          | 5432         | PostgreSQL (all databases)            |
 | rabbitmq          | 5672 / 15672 | Message broker (AMQP / management UI) |
 
+## Architecture Documentation
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the system overview, per-service diagrams, and event-flow sequence diagrams (Mermaid, rendered inline on GitHub).
+
 ## Running with Docker Compose
 
 ```bash
