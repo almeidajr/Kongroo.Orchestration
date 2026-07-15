@@ -12,7 +12,7 @@ labels:
   - pairs:
       app.kubernetes.io/name: identity-api
       app.kubernetes.io/instance: identity-api
-      app.kubernetes.io/version: "0.0.6"
+      app.kubernetes.io/version: "0.0.7"
       app.kubernetes.io/component: api
       app.kubernetes.io/part-of: kongroo
       app.kubernetes.io/managed-by: kustomize

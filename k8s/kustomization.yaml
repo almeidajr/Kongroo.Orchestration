@@ -22,13 +22,13 @@ resources:
 
 images:
   - name: josealmeidajr/kongroo-identity
-    newTag: "0.0.6"
+    newTag: "0.0.7"
   - name: kongroo-catalog
     newName: josealmeidajr/kongroo-catalog
-    newTag: "0.0.5"
+    newTag: "0.0.6"
   - name: kongroo-payments
     newName: josealmeidajr/kongroo-payments
-    newTag: "0.0.4"
+    newTag: "0.0.5"
   - name: kongroo-notifications
     newName: josealmeidajr/kongroo-notifications
-    newTag: "0.0.4"
+    newTag: "0.0.5"
