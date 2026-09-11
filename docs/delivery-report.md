@@ -42,16 +42,16 @@ garantida por índice único) e **cache distribuído (Redis)** para as leituras 
 
 | Serviço      | Repositório                                | Último commit |
 | ------------ | ------------------------------------------ | ------------- |
-| Identidade   | github.com/almeidajr/Kongroo.Identity      | `<sha>`       |
-| Catálogo     | github.com/almeidajr/Kongroo.Catalog       | `<sha>`       |
-| Pagamentos   | github.com/almeidajr/Kongroo.Payments      | `<sha>`       |
-| Notificações | github.com/almeidajr/Kongroo.Notifications | `<sha>`       |
+| Identidade   | github.com/almeidajr/Kongroo.Identity      | `73280bf`       |
+| Catálogo     | github.com/almeidajr/Kongroo.Catalog       | `16a413d`       |
+| Pagamentos   | github.com/almeidajr/Kongroo.Payments      | `bab6012`       |
+| Notificações | github.com/almeidajr/Kongroo.Notifications | `d270570`       |
 
 ### Orquestração
 
 | Repositório                        | Link                                       | Último commit |
 | ---------------------------------- | ------------------------------------------ | ------------- |
-| Docker Compose + Kubernetes + Kong | github.com/almeidajr/Kongroo.Orchestration | `<sha>`       |
+| Docker Compose + Kubernetes + Kong | github.com/almeidajr/Kongroo.Orchestration | `7e7bb8f`       |
 
 ### Bibliotecas compartilhadas (Building Blocks)
 
