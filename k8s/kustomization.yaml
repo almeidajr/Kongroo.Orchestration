@@ -5,6 +5,7 @@ namespace: kongroo
 
 resources:
   - namespace.yaml
+  - aws-credentials.secret.yaml
   - postgres/configmap.yaml
   - postgres/secret.yaml
   - postgres/pvc.yaml
