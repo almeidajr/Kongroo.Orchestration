@@ -25,6 +25,12 @@ repos/
 | notifications-api | 5104         | Notifications (email simulation)      |
 | postgres          | 5432         | PostgreSQL (all databases)            |
 | rabbitmq          | 5672 / 15672 | Message broker (AMQP / management UI) |
+| kong              | 8000         | API Gateway — single entry point (`/identity`, `/catalog`, `/payments`); same port in compose and k8s |
+| kong-status       | 8100         | Kong status API and Prometheus metrics                                  |
+| mongodb           | 27017        | MongoDB (Catalog reviews)                                               |
+| redis             | 6379         | Redis (Catalog distributed cache)                                       |
+| prometheus        | 9090         | Metrics (k8s: `kubectl port-forward svc/prometheus 9090`)              |
+| grafana           | 3000         | Dashboards, anonymous viewer (`admin` / `development` to edit)          |
 
 ## Architecture Documentation
 
@@ -51,6 +57,22 @@ docker compose push
 Kubernetes pulls the pinned `josealmeidajr/kongroo-<service>:<tag>` tags (centralized in `k8s/kustomization.yaml` under `images:`), which are published separately from the moving `:dev` tag used locally.
 
 The RabbitMQ management UI is available at http://localhost:15672 (user `kongroo`, password `development`).
+
+## Gateway
+
+All client traffic goes through Kong (`k8s/kong/kong.yaml`, shared by compose and k8s):
+
+| Public path | Upstream | JWT verified at Kong |
+| --- | --- | --- |
+| `POST /identity/users`, `POST /identity/tokens` | identity-api | no |
+| `/identity/**` (everything else) | identity-api | yes |
+| `/catalog/**` | catalog-api | yes |
+| `/payments/**` | payments-api | yes |
+
+Kong validates HS256 tokens issued by Identity (`iss` = `Kongroo.Identity.Api`) with the shared
+development signing key held inline in `kong.yaml` (mounted from a Secret in k8s). Try it: `./scripts/demo.ps1` (compose) or
+`./scripts/demo.ps1 -AdminUsername admin` (k8s — same `http://localhost:8000`, run one mode at a time).
+Validate the repo with `./scripts/check.ps1`.
 
 ## Deploy to Kubernetes
 
