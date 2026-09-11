@@ -1,0 +1,63 @@
+# Kong Gateway declarative configuration (DB-less). Single source for compose and k8s.
+# Upstreams are the in-cluster/compose Service names on port 8080.
+_format_version: "3.0"
+_transform: true
+
+consumers:
+  - username: identity
+    jwt_secrets:
+      # key must equal the token's `iss` claim; secret must equal Jwt__SigningKey of Identity/Catalog.
+      # Kong 3.9 OSS accepts but does not dereference a {vault://env/...} reference in this field
+      # (verified 2026-09-10: "Invalid signature"), so the development key is inline. In Kubernetes
+      # this file is mounted from a Secret, not a ConfigMap.
+      - key: Kongroo.Identity.Api
+        algorithm: HS256
+        secret: "Development.SigningKey.AtLeast32Characters!"
+
+plugins:
+  - name: prometheus
+    config:
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+services:
+  - name: identity
+    url: http://identity-api:8080
+    routes:
+      # Register and login are the only POST endpoints Identity exposes.
+      # paths + methods outweighs paths-only in Kong's router, so this wins for POSTs.
+      - name: identity-anonymous
+        paths: ["/identity"]
+        methods: ["POST"]
+        strip_path: true
+      - name: identity
+        paths: ["/identity"]
+        strip_path: true
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+
+  - name: catalog
+    url: http://catalog-api:8080
+    routes:
+      - name: catalog
+        paths: ["/catalog"]
+        strip_path: true
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+
+  - name: payments
+    url: http://payments-api:8080
+    routes:
+      - name: payments
+        paths: ["/payments"]
+        strip_path: true
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]

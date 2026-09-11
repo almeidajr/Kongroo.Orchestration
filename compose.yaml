@@ -102,6 +102,35 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  kong:
+    image: kong:3.9
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yaml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: "off"
+      KONG_STATUS_LISTEN: 0.0.0.0:8100
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+    volumes:
+      - ./k8s/kong/kong.yaml:/kong/declarative/kong.yaml:ro
+    ports:
+      - "8000:8000"
+      - "8100:8100"
+    networks:
+      default:
+        aliases:
+          - kong-status
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - identity-api
+      - catalog-api
+      - payments-api
+
   notifications-api:
     image: josealmeidajr/kongroo-notifications:dev
     build:
