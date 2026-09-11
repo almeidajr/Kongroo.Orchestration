@@ -26,7 +26,7 @@ repos/
 | postgres          | 5432         | PostgreSQL (all databases)            |
 | rabbitmq          | 5672 / 15672 | Message broker (AMQP / management UI) |
 | kong              | 8000         | API Gateway — single entry point (`/identity`, `/catalog`, `/payments`); same port in compose and k8s |
-| kong-status       | 8100         | Kong status API and Prometheus metrics                                  |
+| kong-status       | 8100         | Kong status API and Prometheus metrics (k8s: ClusterIP — `kubectl -n kongroo port-forward svc/kong-status 8100:8100`) |
 | mongodb           | 27017        | MongoDB (Catalog reviews)                                               |
 | redis             | 6379         | Redis (Catalog distributed cache)                                       |
 | prometheus        | 9090         | Metrics (k8s: `kubectl port-forward svc/prometheus 9090`)              |
@@ -94,6 +94,9 @@ Deploy the whole stack (PostgreSQL, RabbitMQ, and the four services) into the
 kubectl apply -k k8s/
 kubectl get pods -n kongroo
 ```
+
+Every `kubectl apply -k k8s/` re-applies the placeholder `aws-credentials` Secret. When the APIs run
+against AWS (Stage 2 onward), run `./scripts/set-aws-credentials.ps1` again after each apply.
 
 Kustomize creates the namespace and orders ConfigMaps/Secrets/Services before
 Deployments automatically. Images are pulled from the pinned

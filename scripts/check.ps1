@@ -17,6 +17,10 @@ Write-Host "kubectl kustomize k8s/"
 kubectl kustomize "$root/k8s" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "kustomize build failed" }
 
+Write-Host "docker compose config"
+docker compose -f "$root/compose.yaml" config --quiet
+if ($LASTEXITCODE -ne 0) { throw "compose.yaml failed to validate" }
+
 Write-Host "sync.ps1 -Check"
 & "$root/sync.ps1" -Check
 exit $LASTEXITCODE

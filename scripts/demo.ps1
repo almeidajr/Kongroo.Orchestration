@@ -45,7 +45,22 @@ $player | Format-List id, username, email
 Write-Host "`n[3] Login as player and as admin (POST /identity/tokens)" -ForegroundColor Cyan
 $playerToken = (Invoke-Api POST "/identity/tokens" @{ username = "player$suffix"; password = "Play3r!Pass" }).accessToken
 $adminToken = (Invoke-Api POST "/identity/tokens" @{ username = $AdminUsername; password = $AdminPassword }).accessToken
-Write-Host "Player token: $($playerToken.Substring(0, 24))..."
+Write-Host "Player token: $($playerToken.Substring(0, [Math]::Min(24, $playerToken.Length)))..."
+
+Write-Host "`n[3b] Protected Identity route through Kong" -ForegroundColor Cyan
+Invoke-Api GET "/identity/users/me" -Token $playerToken | Format-List id, username, email
+foreach ($case in @(
+        @{ Label = "no token"; Headers = @{} },
+        @{ Label = "tampered token"; Headers = @{ Authorization = "Bearer $($playerToken.Substring(0, $playerToken.Length - 2))xx" } })) {
+    try {
+        Invoke-RestMethod -Uri "$Gateway/identity/users/me" -Headers $case.Headers | Out-Null
+        throw "Expected 401 from Kong for $($case.Label)"
+    }
+    catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+        if ([int]$_.Exception.Response.StatusCode -ne 401) { throw }
+        Write-Host "Kong answered 401 for $($case.Label)"
+    }
+}
 
 Write-Host "`n[4] Admin creates and publishes a game (POST/PUT /catalog/games)" -ForegroundColor Cyan
 $game = Invoke-Api POST "/catalog/games" @{
@@ -67,6 +82,9 @@ for ($attempt = 0; $attempt -lt 30 -and $current.status -eq "pending"; $attempt+
     $current = Invoke-Api GET "/catalog/orders/$($order.id)" -Token $playerToken
 }
 Write-Host "Order $($order.id) status: $($current.status)"
+if ($current.status -eq "pending") {
+    Write-Warning "Order did not settle within 30 s — check Payments/Catalog consumers and RabbitMQ queues."
+}
 
 Write-Host "`n[7] Library and payment record" -ForegroundColor Cyan
 Invoke-Api GET "/catalog/ownerships" -Token $playerToken | Format-Table gameId, orderId, acquiredAt

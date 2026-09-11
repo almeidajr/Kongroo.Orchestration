@@ -5,7 +5,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
-  "editable": true,
+  "editable": false,
   "refresh": "10s",
   "time": { "from": "now-15m", "to": "now" },
   "templating": {
@@ -138,30 +138,30 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Kong requests / s by upstream service and status",
+      "title": "Kong requests / s by route and status",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (service, code) (rate(kong_http_requests_total[1m]))",
-          "legendFormat": "{{service}} {{code}}"
+          "expr": "sum by (route, code) (rate(kong_http_requests_total[1m]))",
+          "legendFormat": "{{route}} {{code}}"
         }
       ]
     },
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Kong p95 request latency by upstream service",
+      "title": "Kong p95 request latency by route",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, service) (rate(kong_request_latency_ms_bucket[5m])))",
-          "legendFormat": "{{service}}"
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(kong_request_latency_ms_bucket[5m])))",
+          "legendFormat": "{{route}}"
         }
       ]
     },

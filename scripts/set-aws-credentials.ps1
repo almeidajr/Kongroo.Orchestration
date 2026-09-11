@@ -44,6 +44,7 @@ if ($LASTEXITCODE -ne 0) { throw "kubectl apply failed." }
 
 foreach ($deployment in "identity-api", "catalog-api", "payments-api") {
     kubectl -n $Namespace rollout restart deployment/$deployment
+    if ($LASTEXITCODE -ne 0) { throw "rollout restart of deployment/$deployment failed." }
 }
 
 Write-Host "aws-credentials updated from profile [$Profile]; API deployments restarting." -ForegroundColor Green
