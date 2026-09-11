@@ -26,6 +26,9 @@ resources:
   - redis/service.yaml
   - prometheus/deployment.yaml
   - prometheus/service.yaml
+  - grafana/secret.yaml
+  - grafana/deployment.yaml
+  - grafana/service.yaml
   - identity
   - catalog
   - payments
@@ -40,6 +43,15 @@ configMapGenerator:
   - name: prometheus-config
     files:
       - prometheus/prometheus.yml
+  - name: grafana-datasources
+    files:
+      - grafana/provisioning/datasources/datasource.yaml
+  - name: grafana-dashboard-providers
+    files:
+      - grafana/provisioning/dashboards/dashboards.yaml
+  - name: grafana-dashboards
+    files:
+      - grafana/dashboards/kongroo.json
 
 images:
   - name: josealmeidajr/kongroo-identity

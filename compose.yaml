@@ -177,6 +177,21 @@ services:
     depends_on:
       - kong
 
+  grafana:
+    image: grafana/grafana:12.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: development
+    volumes:
+      - ./k8s/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./k8s/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
   notifications-api:
     image: josealmeidajr/kongroo-notifications:dev
     build:
