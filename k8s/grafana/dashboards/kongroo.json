@@ -36,7 +36,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_server_request_duration_seconds_count{job=~\"$service\"}[1m]))",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=~\"$service\", http_route!=\"/metrics\"}[1m]))",
           "legendFormat": "req/s"
         }
       ]
@@ -66,7 +66,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(rate(http_server_request_duration_seconds_count{job=~\"$service\", http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{job=~\"$service\"}[5m])), 1e-9)",
+          "expr": "100 * sum(rate(http_server_request_duration_seconds_count{job=~\"$service\", http_route!=\"/metrics\", http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{job=~\"$service\", http_route!=\"/metrics\"}[5m])), 1e-9)",
           "legendFormat": "5xx %"
         }
       ]
@@ -82,7 +82,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=~\"$service\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=~\"$service\", http_route!=\"/metrics\"}[5m])))",
           "legendFormat": "p95"
         }
       ]
@@ -109,12 +109,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le, job) (rate(http_server_request_duration_seconds_bucket{job=~\"$service\"}[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le, job) (rate(http_server_request_duration_seconds_bucket{job=~\"$service\", http_route!=\"/metrics\"}[5m])))",
           "legendFormat": "p50 {{job}}"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le, job) (rate(http_server_request_duration_seconds_bucket{job=~\"$service\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, job) (rate(http_server_request_duration_seconds_bucket{job=~\"$service\", http_route!=\"/metrics\"}[5m])))",
           "legendFormat": "p95 {{job}}"
         }
       ]
@@ -130,7 +130,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (job, http_response_status_code) (rate(http_server_request_duration_seconds_count{job=~\"$service\"}[1m]))",
+          "expr": "sum by (job, http_response_status_code) (rate(http_server_request_duration_seconds_count{job=~\"$service\", http_route!=\"/metrics\"}[1m]))",
           "legendFormat": "{{job}} {{http_response_status_code}}"
         }
       ]
@@ -175,13 +175,13 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (job) (rate(messaging_masstransit_consume_total[1m]))",
+          "expr": "sum by (job) (rate(messaging_masstransit_consume_ea_total[1m]))",
           "legendFormat": "consume {{job}}"
         },
         {
           "refId": "B",
-          "expr": "sum by (job) (rate(messaging_masstransit_publish_total[1m]))",
-          "legendFormat": "publish {{job}}"
+          "expr": "sum by (job) (rate(messaging_masstransit_send_ea_total[1m]))",
+          "legendFormat": "send {{job}}"
         }
       ]
     }
