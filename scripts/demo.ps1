@@ -89,3 +89,13 @@ if ($current.status -eq "pending") {
 Write-Host "`n[7] Library and payment record" -ForegroundColor Cyan
 Invoke-Api GET "/catalog/ownerships" -Token $playerToken | Format-Table gameId, orderId, acquiredAt
 Invoke-Api GET "/payments/$($order.id)" -Token $playerToken | Format-List
+
+Write-Host "`n[8] Player reviews the game (POST/GET /catalog/games/{id}/reviews -> MongoDB)" -ForegroundColor Cyan
+Invoke-Api POST "/catalog/games/$($game.id)/reviews" @{ rating = 5; text = "Flawless puzzle design." } $playerToken | Format-List id, rating, text, createdAt
+Invoke-Api GET "/catalog/games/$($game.id)/reviews" -Token $playerToken | Format-List gameId, averageRating, count
+
+Write-Host "`n[9] Cached game read (second call served by HybridCache/Redis)" -ForegroundColor Cyan
+foreach ($attempt in 1..2) {
+    $elapsed = Measure-Command { Invoke-Api GET "/catalog/games/$($game.id)" -Token $playerToken | Out-Null }
+    Write-Host ("GET /catalog/games/{0} #{1}: {2} ms" -f $game.id, $attempt, [int]$elapsed.TotalMilliseconds)
+}
