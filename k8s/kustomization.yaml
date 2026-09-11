@@ -24,6 +24,8 @@ resources:
   - mongodb/service.yaml
   - redis/deployment.yaml
   - redis/service.yaml
+  - prometheus/deployment.yaml
+  - prometheus/service.yaml
   - identity
   - catalog
   - payments
@@ -33,6 +35,11 @@ secretGenerator:
   - name: kong-declarative
     files:
       - kong/kong.yaml
+
+configMapGenerator:
+  - name: prometheus-config
+    files:
+      - prometheus/prometheus.yml
 
 images:
   - name: josealmeidajr/kongroo-identity

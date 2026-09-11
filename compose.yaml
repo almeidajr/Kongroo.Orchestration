@@ -165,6 +165,18 @@ services:
       - catalog-api
       - payments-api
 
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./k8s/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - kong
+
   notifications-api:
     image: josealmeidajr/kongroo-notifications:dev
     build:
