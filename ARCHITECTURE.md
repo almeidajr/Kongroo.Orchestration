@@ -1,28 +1,61 @@
 # Kongroo Architecture
 
-Architecture reference for the Kongroo FIAP Cloud Games microservices. Every diagram below is a [Mermaid](https://mermaid.js.org/) block and renders inline on GitHub.
+Architecture reference for the Kongroo FIAP Cloud Games microservices (Phase 3). Diagrams are
+[Mermaid](https://mermaid.js.org/) and render inline on GitHub.
 
-The system is four independent .NET microservices communicating asynchronously over RabbitMQ (via MassTransit), each owning its own PostgreSQL schema, plus a shared orchestration repo (this one) providing Docker Compose and Kubernetes manifests.
+Three .NET 10 microservices sit behind a **Kong API Gateway**, communicate asynchronously through
+**MassTransit** (RabbitMQ locally, **Amazon SQS/SNS** when deployed), each own a PostgreSQL schema,
+Catalog additionally uses **MongoDB** (reviews) and **Redis** (HybridCache). Notifications is an
+**AWS Lambda** triggered by an SQS queue. **Prometheus** scrapes the services and Kong; **Grafana**
+shows the dashboard.
 
-| Service | Port | Container Port | Responsibility |
-| --- | --- | --- | --- |
-| Identity | 5101 | 8080 | User registration, authentication (JWT), authorization |
-| Catalog | 5102 | 8080 | Game CRUD, promotions, order placement, user library |
-| Payments | 5103 | 8080 | Simulated payment processing (threshold approval) |
-| Notifications | 5104 | 8080 | Simulated welcome / purchase-confirmation emails (logged) |
+| Component | Kind | Responsibility |
+| --- | --- | --- |
+| Kong | Gateway | Single entry point, JWT validation, routing, edge metrics |
+| Identity | API | Registration, authentication (JWT), authorization |
+| Catalog | API | Games, promotions, orders, library, reviews (MongoDB), cached reads (Redis) |
+| Payments | API | Threshold-based payment simulation |
+| Notifications | Lambda | Simulated welcome / purchase-confirmation emails to CloudWatch |
+| Prometheus + Grafana | Observability | Latency, request count by status, error rate, MassTransit rates |
 
 ## System Overview
 
-Solid arrows are synchronous HTTP / EF Core calls; dashed arrows are asynchronous RabbitMQ integration events. Each service owns its **own** PostgreSQL database; Notifications is stateless.
+```mermaid
+flowchart LR
+    client([Client]) -->|HTTP| kong[Kong Gateway<br/>jwt · prometheus]
+    kong -->|/identity| identity[Identity API]
+    kong -->|/catalog| catalog[Catalog API]
+    kong -->|/payments| payments[Payments API]
 
-![Kongroo system overview](./docs/kongroo-overview.png)
+    identity --> pgi[(Postgres<br/>identity)]
+    catalog --> pgc[(Postgres<br/>catalog)]
+    catalog --> mongo[(MongoDB<br/>reviews)]
+    catalog --> redis[(Redis<br/>HybridCache)]
+    payments --> pgp[(Postgres<br/>payments)]
 
-> Editable source: [`docs/kongroo-overview.excalidraw`](./docs/kongroo-overview.excalidraw) — open at [excalidraw.com](https://excalidraw.com) (File → Open) or with an Excalidraw editor. Regenerate the diagram (and re-export the PNG) with `node scripts/generate-overview-excalidraw.cjs`.
+    identity -.->|UserCreated| sns{{SNS topics<br/>kongroo-*}}
+    catalog -.->|OrderPlaced| sns
+    payments -.->|PaymentProcessed| sns
+    sns -.-> sqsp[/SQS payments-order-placed/] -.-> payments
+    sns -.-> sqsc[/SQS catalog-payment-processed/] -.-> catalog
+    sns -.-> sqsn[/SQS kongroo-notifications/] -.-> lambda[[AWS Lambda<br/>Notifications]] --> cw[CloudWatch Logs]
 
-- Docker Compose builds each service image from its sibling repo and exposes the APIs on localhost ports 5101–5104.
-- Kubernetes uses ClusterIP Services, ConfigMaps, Secrets, a shared PostgreSQL PVC, and RabbitMQ.
-- Queue names are MassTransit's default kebab-case per-service consumer names — no manual queue naming.
-- All services publish through an EF Core transactional outbox (except Notifications, which is stateless), so a message is only published if its database transaction commits.
+    prom[Prometheus] -->|/metrics| identity
+    prom -->|/metrics| catalog
+    prom -->|/metrics| payments
+    prom -->|:8100/metrics| kong
+    grafana[Grafana] --> prom
+```
+
+- Solid arrows are synchronous HTTP / driver calls; dashed arrows are asynchronous integration events.
+- With `Messaging__Transport=RabbitMq` (compose, tests) the SNS/SQS pair is RabbitMQ exchanges/queues
+  with identical semantics; MassTransit's EF Core outbox guarantees publish-after-commit either way.
+- SNS topic names are fixed by contract (`MessagingTopics` in each service; `template.yaml` in
+  Notifications): `kongroo-user-created`, `kongroo-user-role-changed`, `kongroo-order-placed`,
+  `kongroo-payment-processed`. On Amazon SNS, `kongroo-user-role-changed` is created lazily — it only
+  appears once a role change is actually published — so its absence on a fresh stack is expected, not a
+  failure.
+- Compose and Kubernetes both expose Kong on `localhost:8000` (k8s: LoadBalancer port 8000 on Rancher Desktop, whose Traefik owns port 80). Run one mode at a time.
 
 ## Services
 
@@ -91,6 +124,7 @@ flowchart LR
 | Order | CustomerId, PurchasedAt, Total (Money), Status (Pending/Paid/Rejected), Lines[] |
 | OrderLine | GameId, GameTitle, ListPrice, FinalPrice, AppliedPromotionId |
 | Ownership | CustomerId, GameId, OrderId, AcquiredAt |
+| Review (MongoDB) | GameId, CustomerId, CustomerName, Rating 1–5, Text?, CreatedAt — unique (GameId, CustomerId) |
 
 | Endpoint | Description |
 | --- | --- |
@@ -105,10 +139,14 @@ flowchart LR
 | `POST /orders` | Place order (purchase) |
 | `GET /ownerships` | List library records |
 | `GET /ownerships/{ownershipId}` | Get library record |
+| `POST /games/{gameId}/reviews` | Submit a review (one per customer per game) |
+| `GET /games/{gameId}/reviews` | Average rating, count, latest reviews |
 
 **Publishes:** `OrderPlacedIntegrationEvent(OrderId, CustomerId, CustomerEmail, CustomerName, TotalAmount, Currency, Lines[{GameId, UnitPrice}])`
 **Consumes:** `PaymentProcessedIntegrationEvent(PaymentId, OrderId, CustomerId, CustomerEmail, CustomerName, TotalAmount, Currency, IsApproved, ProcessedAt)` — grants `Ownership` when `IsApproved` is true
 **Tables:** `catalog.games`, `catalog.promotions`, `catalog.orders`, `catalog.order_lines`, `catalog.ownerships` + MassTransit outbox
+**MongoDB:** `kongroo_catalog.reviews` (via `MongoDB.Driver`)
+**Cache:** `HybridCache` (Redis L2 5 min, in-process L1 1 min) on `GET /games` and `GET /games/{id}`; tag `games` evicted by every game/promotion write
 
 ### Payments
 
@@ -146,23 +184,20 @@ flowchart LR
 
 > Approval is a pure threshold check on `TotalAmount` — no randomness.
 
-### Notifications
+### Notifications (AWS Lambda)
 
-Simulates sending welcome and purchase-confirmation emails by logging them to the console. Stateless and consume-only.
+Serverless replacement for the Phase 2 container. Triggered by SQS, deployed with SAM to an AWS Academy
+Learner Lab account (`LabRole`), logs to CloudWatch.
 
 ```mermaid
 flowchart LR
-    subgraph notifications[Notifications API :5104]
-        direction TB
-        app[Application<br/>event consumers]
-        dom[Domain<br/>WelcomeEmail · PurchaseConfirmationEmail]
-        inf[Infrastructure<br/>LoggingNotificationSender]
-        app --> dom
-        app --> inf
-    end
-    inc1[[UserCreatedIntegrationEvent]] -.->|consume| app
-    inc2[[PaymentProcessedIntegrationEvent]] -.->|consume| app
-    inf --> log[/console log<br/>simulated email/]
+    t1{{SNS kongroo-user-created}} -.-> q[/SQS kongroo-notifications/]
+    t2{{SNS kongroo-payment-processed}} -.-> q
+    q -.->|batch ≤10| fn[[Lambda Function.Handle]]
+    fn --> parse[MassTransitEnvelope.Parse<br/>messageType[0] + message]
+    parse --> handler[NotificationHandler.Handle]
+    handler --> log[/CloudWatch: simulated email line/]
+    q -.->|3 failures| dlq[/SQS kongroo-notifications-dlq/]
 ```
 
 | Transient record | Fields |
@@ -170,9 +205,26 @@ flowchart LR
 | WelcomeEmail | To, Name |
 | PurchaseConfirmationEmail | To, Name, OrderId, Amount, Currency |
 
-**Publishes:** _(none)_
-**Consumes:** `UserCreatedIntegrationEvent` (logs a simulated welcome email), `PaymentProcessedIntegrationEvent` (logs a simulated purchase confirmation when `IsApproved`; otherwise logs a skip note)
-**Tables:** _(none — stateless, no database)_
+**Consumes:** `UserCreatedIntegrationEvent` (welcome), `PaymentProcessedIntegrationEvent` (confirmation when `IsApproved`, skip line otherwise). Unknown types are acknowledged.
+**Error handling:** malformed records are reported as partial batch failures and retried alone; after 3 receives they land in the DLQ.
+**IaC:** `template.yaml` (topics, queue, DLQ, raw-delivery subscriptions, queue policy, function, log group).
+
+## Gateway
+
+Kong Gateway 3.9 OSS, DB-less, one declarative file (`Kongroo.Orchestration/k8s/kong/kong.yaml`).
+Routes strip the prefix and proxy to the ClusterIP Services on port 8080. The `jwt` plugin holds one
+consumer (`identity`) whose credential key is the issuer `Kongroo.Identity.Api` and whose secret is the
+shared HS256 development signing key (inline; Kong 3.9 OSS does not dereference vault references in that
+field, so Kubernetes mounts the file from a Secret). Register and login are the
+only anonymous routes; all others return Kong's 401 before reaching a service. The `prometheus` plugin
+exposes edge metrics on the status port 8100.
+
+## Observability
+
+Identity, Catalog and Payments register OpenTelemetry metrics (ASP.NET Core, HttpClient, runtime,
+MassTransit meter) and expose them with the Prometheus exporter at `/metrics`. Prometheus scrapes four
+static targets (three APIs, Kong). Grafana provisions the **Kongroo** dashboard from
+`k8s/grafana/dashboards/kongroo.json`. Lambda logs live in CloudWatch.
 
 ## Event Flows
 
@@ -181,16 +233,18 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     actor Client
+    participant Kong as Kong Gateway
     participant Identity as Identity API
     participant DB as Postgres (identity)
     participant MQ as RabbitMQ
-    participant Notif as Notifications
+    participant Lambda as Notifications Lambda
 
-    Client->>Identity: POST /users
+    Client->>Kong: POST /identity/users
+    Kong->>Identity: POST /users
     Identity->>DB: INSERT users row + outbox row (same transaction)
     Identity-->>MQ: publish UserCreatedIntegrationEvent (outbox delivery)
-    MQ-->>Notif: deliver UserCreatedIntegrationEvent
-    Note over Notif: log simulated welcome email
+    MQ-->>Lambda: SQS kongroo-notifications
+    Note over Lambda: log simulated welcome email (CloudWatch)
 ```
 
 ### Game Purchase Flow
@@ -198,16 +252,26 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     actor Client
+    participant Kong as Kong Gateway
     participant Catalog as Catalog API
-    participant MQ as RabbitMQ
+    participant Bus as SNS/SQS (or RabbitMQ)
     participant Payments as Payments API
-    participant Notif as Notifications
+    participant Lambda as Notifications Lambda
 
-    Client->>Catalog: POST /orders
-    Catalog-->>MQ: publish OrderPlacedIntegrationEvent
-    MQ-->>Payments: deliver OrderPlacedIntegrationEvent
-    Note over Payments: apply threshold approval policy<br/>IsApproved = TotalAmount <= ApprovalLimit
-    Payments-->>MQ: publish PaymentProcessedIntegrationEvent
-    MQ-->>Catalog: deliver — grant Ownership if approved
-    MQ-->>Notif: deliver — log confirmation, or skip if rejected
+    Client->>Kong: POST /catalog/orders (Bearer JWT)
+    Kong->>Kong: verify HS256 signature + exp
+    Kong->>Catalog: POST /orders
+    Catalog-->>Bus: OrderPlacedIntegrationEvent (outbox → topic kongroo-order-placed)
+    Bus-->>Payments: deliver via queue payments-order-placed-integration-event
+    Note over Payments: IsApproved = TotalAmount <= ApprovalLimit
+    Payments-->>Bus: PaymentProcessedIntegrationEvent (topic kongroo-payment-processed)
+    Bus-->>Catalog: queue catalog-payment-processed-integration-event — mark Paid, grant Ownership, evict games cache tag
+    Bus-->>Lambda: queue kongroo-notifications — log purchase confirmation to CloudWatch
 ```
+
+Verified end to end through Kong on the `0.1.0` images: anonymous, no-token and tampered-token requests
+all get 401; register → login → publish a game → order settles `Paid` → ownership granted → payment
+`Approved 19.99 USD`; the Lambda logged `Sending welcome email to …` at registration and
+`Sending purchase confirmation email to … 19.99 USD.` after settlement; a review write went to MongoDB
+(`ux_reviews_game_customer` unique index); the second cached game read took 9 ms against 159 ms for the
+first.
