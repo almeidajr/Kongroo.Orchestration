@@ -194,7 +194,7 @@ flowchart LR
     t1{{SNS kongroo-user-created}} -.-> q[/SQS kongroo-notifications/]
     t2{{SNS kongroo-payment-processed}} -.-> q
     q -.->|batch ≤10| fn[[Lambda Function.Handle]]
-    fn --> parse[MassTransitEnvelope.Parse<br/>messageType[0] + message]
+    fn --> parse["MassTransitEnvelope.Parse<br/>messageType[0] + message"]
     parse --> handler[NotificationHandler.Handle]
     handler --> log[/CloudWatch: simulated email line/]
     q -.->|3 failures| dlq[/SQS kongroo-notifications-dlq/]
@@ -236,15 +236,14 @@ sequenceDiagram
     participant Kong as Kong Gateway
     participant Identity as Identity API
     participant DB as Postgres (identity)
-    participant MQ as RabbitMQ
+    participant Bus as SNS/SQS (or RabbitMQ)
     participant Lambda as Notifications Lambda
 
     Client->>Kong: POST /identity/users
     Kong->>Identity: POST /users
     Identity->>DB: INSERT users row + outbox row (same transaction)
-    Identity-->>MQ: publish UserCreatedIntegrationEvent (outbox delivery)
-    MQ-->>Lambda: SQS kongroo-notifications
-    Note over Lambda: log simulated welcome email (CloudWatch)
+    Identity-->>Bus: publish UserCreatedIntegrationEvent (outbox → topic kongroo-user-created)
+    Bus-->>Lambda: queue kongroo-notifications — log simulated welcome email (CloudWatch)
 ```
 
 ### Game Purchase Flow

@@ -127,7 +127,7 @@ k8s/
 | Script | Purpose |
 | --- | --- |
 | `scripts/check.ps1` | `kong config parse`, `kubectl kustomize`, `sync.ps1 -Check` |
-| `scripts/demo.ps1` | Drives every graded flow through Kong (compose defaults; `-Gateway http://localhost -AdminUsername admin` for k8s) |
+| `scripts/demo.ps1` | Drives every graded flow through Kong (compose defaults; `./scripts/demo.ps1 -AdminUsername admin` for k8s) |
 | `scripts/set-aws-credentials.ps1` | Copies Learner Lab credentials into the cluster and restarts the APIs |
 | `sync.ps1` | Regenerates `k8s/<service>/` from the sibling repos (`-Check` detects drift) |
 
