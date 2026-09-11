@@ -18,6 +18,12 @@ resources:
   - kong/deployment.yaml
   - kong/service.yaml
   - kong/status-service.yaml
+  - mongodb/secret.yaml
+  - mongodb/pvc.yaml
+  - mongodb/deployment.yaml
+  - mongodb/service.yaml
+  - redis/deployment.yaml
+  - redis/service.yaml
   - identity
   - catalog
   - payments

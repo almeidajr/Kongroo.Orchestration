@@ -33,6 +33,33 @@ services:
       retries: 5
       start_period: 30s
 
+  mongodb:
+    image: mongo:8.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: kongroo
+      MONGO_INITDB_ROOT_PASSWORD: development
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:8.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   identity-api:
     image: josealmeidajr/kongroo-identity:dev
     build:
@@ -77,10 +104,17 @@ services:
       RabbitMq__Host: "rabbitmq"
       RabbitMq__User: "kongroo"
       RabbitMq__Pass: "development"
+      Mongo__ConnectionString: "mongodb://kongroo:development@mongodb:27017/kongroo_catalog?authSource=admin"
+      Mongo__Database: "kongroo_catalog"
+      ConnectionStrings__Redis: "redis:6379"
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   payments-api:
@@ -150,3 +184,4 @@ services:
 volumes:
   postgres-data:
   rabbitmq-data:
+  mongodb-data:
