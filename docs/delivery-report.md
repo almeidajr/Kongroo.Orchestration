@@ -102,6 +102,18 @@ por SAM (stack `kongroo-notifications`, região `us-east-1`). A tag 0.0.5 é o �
 | Banco NoSQL                  | MongoDB no Catálogo: avaliações de jogos, índice único `ux_reviews_game_customer` (409 na segunda avaliação) |
 | Cache distribuído            | Redis no Catálogo via `HybridCache` (5 min distribuído / 1 min em processo), invalidação pela tag `games` |
 
+## Evidência de execução (verificado em 11/09/2026)
+
+- Kong devolveu 401 para chamada anônima, sem token e com token adulterado.
+- O pedido liquidou como `paid`, com ownership concedida e pagamento `Approved 19.99 USD`.
+- A Lambda registrou no CloudWatch a linha de boas-vindas após o cadastro e a de confirmação de compra
+  após a liquidação.
+- Uma mensagem inválida chegou à DLQ após três entregas.
+- O Prometheus mostrou quatro alvos UP (`identity-api`, `catalog-api`, `payments-api`, `kong`).
+- A avaliação foi gravada no MongoDB com o índice único `ux_reviews_game_customer`; o resumo retornou
+  `count 1, averageRating 5`.
+- A segunda leitura do jogo levou 9 ms, contra 159 ms da primeira.
+
 ## Como executar
 
 O `README.md` do repositório de orquestração é o guia central: traz os dois modos de execução

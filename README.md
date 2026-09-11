@@ -16,6 +16,21 @@ code lives in the sibling service repositories; this repo holds Docker Compose, 
 
 Architecture reference: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
+## Prerequisites
+
+- **Docker** — Rancher Desktop on this project's machine (with Kubernetes enabled for the k8s path).
+- **kubectl** — for the Kubernetes bring-up.
+- **PowerShell 7** — every script is `#requires -Version 7`.
+- **.NET 10 SDK** — only needed to build the service images from source.
+- **Kubernetes path only**: an AWS Academy Learner Lab account, the AWS CLI, and the AWS SAM CLI with
+  `Amazon.Lambda.Tools`. Where MSI installers are blocked:
+  ```powershell
+  dotnet tool install -g Amazon.Lambda.Tools
+  uv tool install aws-sam-cli --python 3.13
+  uv tool install awscli --python 3.13
+  ```
+- Pushing images to Docker Hub needs `docker login` first.
+
 ## Phase 3 stack — the choices
 
 | Requirement | Choice | Where |
@@ -28,6 +43,9 @@ Architecture reference: [ARCHITECTURE.md](./ARCHITECTURE.md).
 | Cache | **Redis 8** — Catalog `HybridCache` over `IDistributedCache` (StackExchange provider) for game reads, tag invalidation on writes | `k8s/redis` |
 
 ## Two ways to run
+
+Docker Compose and Kubernetes share the host ports (8000, 3000, 9090 among others) — run only one mode
+at a time.
 
 | Mode | What runs | Notifications |
 | --- | --- | --- |
@@ -154,3 +172,10 @@ k8s/
 | Bootstrap admin | compose `developer` / `Sup3rSecure!`; k8s `admin` / `Sup3rSecure!` |
 | Grafana admin | `admin` / `development` |
 | AWS | never committed — Learner Lab session values via `scripts/set-aws-credentials.ps1` |
+
+## Delivery documents
+
+- [`docs/delivery-report.md`](./docs/delivery-report.md) — the delivery report (Portuguese): repositories,
+  packages, images, AWS resources and the requirement-to-implementation table.
+- [`docs/video-recording-guide.md`](./docs/video-recording-guide.md) — the recording plan for the
+  ≤ 20-minute walkthrough video.
