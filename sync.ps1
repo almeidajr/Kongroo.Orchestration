@@ -55,7 +55,7 @@ function Sync-Service {
         ($_ -notmatch '^\s*-\s*namespace\.yaml\s*$') -and
         ($_ -notmatch '^\s*namespace:\s*kongroo\s*$')
     }
-    Set-Content -Path (Join-Path $dest "kustomization.yaml") -Value $filtered
+    [System.IO.File]::WriteAllText((Join-Path $dest "kustomization.yaml"), (($filtered -join "`n") + "`n"), [System.Text.UTF8Encoding]::new($false))
 }
 
 if ($Check) {
