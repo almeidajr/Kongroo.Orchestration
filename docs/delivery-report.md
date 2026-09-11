@@ -51,7 +51,7 @@ garantida por índice único) e **cache distribuído (Redis)** para as leituras 
 
 | Repositório                        | Link                                       | Último commit |
 | ---------------------------------- | ------------------------------------------ | ------------- |
-| Docker Compose + Kubernetes + Kong | github.com/almeidajr/Kongroo.Orchestration | `7e7bb8f`       |
+| Docker Compose + Kubernetes + Kong | github.com/almeidajr/Kongroo.Orchestration | `7e7bb8f` *     |
 
 ### Bibliotecas compartilhadas (Building Blocks)
 
@@ -60,6 +60,8 @@ garantida por índice único) e **cache distribuído (Redis)** para as leituras 
 | Domain         | github.com/almeidajr/Kongroo.BuildingBlocks.Domain         | `3526ea3`     |
 | Application    | github.com/almeidajr/Kongroo.BuildingBlocks.Application    | `5b31ef2`     |
 | Infrastructure | github.com/almeidajr/Kongroo.BuildingBlocks.Infrastructure | `f070312`     |
+
+\* Commit da entrega; o repositório de orquestração recebe depois disto apenas os commits que preenchem este relatório (hashes e link do vídeo).
 
 ## Pacotes NuGet (nuget.org, `almeidajr`)
 
