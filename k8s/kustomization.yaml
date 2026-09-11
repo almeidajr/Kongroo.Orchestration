@@ -33,7 +33,6 @@ resources:
   - identity
   - catalog
   - payments
-  - notifications
 
 secretGenerator:
   - name: kong-declarative
@@ -62,7 +61,4 @@ images:
     newTag: "0.0.6"
   - name: kongroo-payments
     newName: josealmeidajr/kongroo-payments
-    newTag: "0.0.5"
-  - name: kongroo-notifications
-    newName: josealmeidajr/kongroo-notifications
     newTag: "0.0.5"

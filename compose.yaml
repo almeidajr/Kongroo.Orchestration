@@ -196,22 +196,6 @@ services:
     depends_on:
       - prometheus
 
-  notifications-api:
-    image: josealmeidajr/kongroo-notifications:dev
-    build:
-      context: ../Kongroo.Notifications
-      dockerfile: Dockerfile
-    ports:
-      - "5104:8080"
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      RabbitMq__Host: "rabbitmq"
-      RabbitMq__User: "kongroo"
-      RabbitMq__Pass: "development"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-
 volumes:
   postgres-data:
   rabbitmq-data:

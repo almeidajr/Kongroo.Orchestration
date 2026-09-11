@@ -19,8 +19,7 @@ $ErrorActionPreference = "Stop"
 $services = @(
     @{ Dir = "identity"; Repo = "Kongroo.Identity" },
     @{ Dir = "catalog"; Repo = "Kongroo.Catalog" },
-    @{ Dir = "payments"; Repo = "Kongroo.Payments" },
-    @{ Dir = "notifications"; Repo = "Kongroo.Notifications" }
+    @{ Dir = "payments"; Repo = "Kongroo.Payments" }
 )
 $copyFiles = @("configmap.yaml", "secret.yaml", "service.yaml", "deployment.yaml")
 
