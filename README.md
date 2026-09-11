@@ -1,10 +1,40 @@
 # <img alt="Kongroo" src="./logo.png" width="40"/> Kongroo.Orchestration
 
-Central orchestration repository for FIAP Cloud Games Phase 2 microservices.
+Central guide and infrastructure repository for **FIAP Cloud Games — Phase 3** (Kongroo). Application
+code lives in the sibling service repositories; this repo holds Docker Compose, the Kubernetes manifests
+(Kustomize), the API gateway configuration, the monitoring stack and the scripts that tie them together.
 
-## Repository Layout
+## Repositories
 
-All service repos must be sibling directories of this repo:
+| Repository | Role | Link |
+| --- | --- | --- |
+| Kongroo.Identity | Users, authentication, JWT issuance (UsersAPI) | https://github.com/almeidajr/Kongroo.Identity |
+| Kongroo.Catalog | Games, promotions, orders, library, **reviews (MongoDB)**, **cache (Redis)** (CatalogAPI) | https://github.com/almeidajr/Kongroo.Catalog |
+| Kongroo.Payments | Payment simulation (PaymentsAPI) | https://github.com/almeidajr/Kongroo.Payments |
+| Kongroo.Notifications | **AWS Lambda** triggered by SQS (serverless NotificationsAPI) + SAM template | https://github.com/almeidajr/Kongroo.Notifications |
+| Kongroo.Orchestration | This repo: compose, k8s, Kong, Prometheus/Grafana, scripts, docs | https://github.com/almeidajr/Kongroo.Orchestration |
+
+Architecture reference: [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## Phase 3 stack — the choices
+
+| Requirement | Choice | Where |
+| --- | --- | --- |
+| API Gateway | **Kong Gateway 3.9 (OSS), DB-less**, `jwt` plugin (HS256, issuer `Kongroo.Identity.Api`), `prometheus` plugin | `k8s/kong/kong.yaml` (shared by compose and k8s) |
+| Serverless | **AWS Lambda (.NET 10)** triggered by **SQS**, subscribed to the MassTransit **SNS** topics; **SAM** IaC; AWS Academy Learner Lab | Kongroo.Notifications `template.yaml` |
+| Messaging | MassTransit with a config switch: **RabbitMQ** for compose and tests, **Amazon SQS/SNS** on k8s (`Messaging__Transport`) | service ConfigMaps |
+| Observability | **Option A — Prometheus + Grafana** as k8s manifests; OpenTelemetry `/metrics` on Identity, Catalog, Payments; Kong metrics | `k8s/prometheus`, `k8s/grafana` |
+| NoSQL | **MongoDB 8** — Catalog game reviews via `MongoDB.Driver` | `k8s/mongodb`, Catalog `POST/GET /games/{id}/reviews` |
+| Cache | **Redis 8** — Catalog `HybridCache` over `IDistributedCache` (StackExchange provider) for game reads, tag invalidation on writes | `k8s/redis` |
+
+## Two ways to run
+
+| Mode | What runs | Notifications |
+| --- | --- | --- |
+| **Docker Compose** (`docker compose up --build`) | Kong, 3 APIs, Postgres, RabbitMQ, MongoDB, Redis, Prometheus, Grafana | not fired (broker is RabbitMQ, the Lambda lives in AWS) |
+| **Kubernetes + Learner Lab** (`kubectl apply -k k8s/`) | same, with the APIs on Amazon SQS | Lambda logs in CloudWatch |
+
+Required sibling layout (compose build contexts are relative):
 
 ```
 repos/
@@ -15,90 +45,112 @@ repos/
   Kongroo.Orchestration/   ← this repo
 ```
 
-## Services
+## Endpoints and ports
 
-| Service           | Local Port   | Description                           |
-| ----------------- | ------------ | ------------------------------------- |
-| identity-api      | 5101         | User registration and authentication  |
-| catalog-api       | 5102         | Game catalog and user library         |
-| payments-api      | 5103         | Payment processing                    |
-| notifications-api | 5104         | Notifications (email simulation)      |
-| postgres          | 5432         | PostgreSQL (all databases)            |
-| rabbitmq          | 5672 / 15672 | Message broker (AMQP / management UI) |
-| kong              | 8000         | API Gateway — single entry point (`/identity`, `/catalog`, `/payments`); same port in compose and k8s |
-| kong-status       | 8100         | Kong status API and Prometheus metrics (k8s: ClusterIP — `kubectl -n kongroo port-forward svc/kong-status 8100:8100`) |
-| mongodb           | 27017        | MongoDB (Catalog reviews)                                               |
-| redis             | 6379         | Redis (Catalog distributed cache)                                       |
-| prometheus        | 9090         | Metrics (k8s: `kubectl port-forward svc/prometheus 9090`)              |
-| grafana           | 3000         | Dashboards, anonymous viewer (`admin` / `development` to edit)          |
+| Component | Compose | Kubernetes | Notes |
+| --- | --- | --- | --- |
+| **Kong proxy (single entry point)** | http://localhost:8000 | http://localhost:8000 (LoadBalancer 8000; Traefik owns 80 on Rancher Desktop) | `/identity/**`, `/catalog/**`, `/payments/**` |
+| Kong status + metrics | http://localhost:8100/metrics | in-cluster `kong-status:8100` | scraped by Prometheus |
+| Grafana | http://localhost:3000/d/kongroo | http://localhost:3000/d/kongroo | anonymous Viewer; `admin` / `development` |
+| Prometheus | http://localhost:9090 | `kubectl -n kongroo port-forward svc/prometheus 9090` | targets: identity-api, catalog-api, payments-api, kong |
+| RabbitMQ UI | http://localhost:15672 | `port-forward svc/rabbitmq 15672` | `kongroo` / `development` |
+| identity-api / catalog-api / payments-api | 5101 / 5102 / 5103 (direct, dev only) | ClusterIP 8080 only — go through Kong | |
+| postgres / mongodb / redis | 5432 / 27017 / 6379 | ClusterIP | |
 
-## Architecture Documentation
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the system overview, per-service diagrams, and event-flow sequence diagrams (Mermaid, rendered inline on GitHub).
-
-## Running with Docker Compose
-
-```bash
-docker compose up --build
-```
-
-This starts all 4 application services, PostgreSQL, and RabbitMQ. The `init-db.sql` script creates the
-required databases on first run.
-
-### Publishing images to Docker Hub
-
-compose tags built images as `josealmeidajr/kongroo-<service>:dev`. To publish them:
-
-```bash
-docker compose build
-docker compose push
-```
-
-Kubernetes pulls the pinned `josealmeidajr/kongroo-<service>:<tag>` tags (centralized in `k8s/kustomization.yaml` under `images:`), which are published separately from the moving `:dev` tag used locally.
-
-The RabbitMQ management UI is available at http://localhost:15672 (user `kongroo`, password `development`).
-
-## Gateway
-
-All client traffic goes through Kong (`k8s/kong/kong.yaml`, shared by compose and k8s):
+### Gateway routes
 
 | Public path | Upstream | JWT verified at Kong |
 | --- | --- | --- |
-| `POST /identity/users`, `POST /identity/tokens` | identity-api | no |
+| `POST /identity/users`, `POST /identity/tokens` | identity-api | no (register, login) |
 | `/identity/**` (everything else) | identity-api | yes |
 | `/catalog/**` | catalog-api | yes |
 | `/payments/**` | payments-api | yes |
 
-Kong validates HS256 tokens issued by Identity (`iss` = `Kongroo.Identity.Api`) with the shared
-development signing key held inline in `kong.yaml` (mounted from a Secret in k8s). Try it: `./scripts/demo.ps1` (compose) or
-`./scripts/demo.ps1 -AdminUsername admin` (k8s — same `http://localhost:8000`, run one mode at a time).
-Validate the repo with `./scripts/check.ps1`.
+Kong validates the HS256 signature and `exp` against the shared development signing key (inline in
+`k8s/kong/kong.yaml`, which Kubernetes mounts from a Secret), then forwards the `Authorization` header so
+each service still validates the token itself.
 
-## Deploy to Kubernetes
-
-The per-service manifests under `k8s/identity`, `k8s/catalog`, `k8s/payments`,
-and `k8s/notifications` are **generated** from the sibling service repos by
-`sync.ps1` — do not edit them by hand. Re-generate after any service-repo
-manifest change:
+## Bring-up: Docker Compose
 
 ```powershell
-./sync.ps1            # regenerate k8s/<service>/ from ../Kongroo.*
-./sync.ps1 -Check     # verify in sync (exit 1 on drift)
-# -ReposRoot <path> if the service repos aren't in the parent directory
+docker compose up --build -d
+./scripts/demo.ps1                     # register → login → publish game → buy → review, all via Kong
+```
+`init-db.sql` creates the three PostgreSQL databases on the first start (`docker compose down -v` to reset).
+
+## Bring-up: Kubernetes + AWS Academy Learner Lab
+
+1. **Start the lab** and paste **AWS Details → AWS CLI** into `~/.aws/credentials` (`[default]` profile).
+2. **Deploy the Lambda once** (from `../Kongroo.Notifications`): `sam build && sam deploy`. Redeploy only when the function changes.
+3. **Deploy the cluster**: `kubectl apply -k k8s/`
+4. **Load the session credentials** into the cluster — **run this after every `kubectl apply -k k8s/`** (the apply resets the Secret to placeholders) **and after every new lab session**:
+   `./scripts/set-aws-credentials.ps1` — writes the `aws-credentials` Secret and restarts the three APIs.
+   The `masstransit-bus` health check is in the `ready` set, so stale credentials keep the API pods out of
+   Kong and Prometheus until this script runs — a loud failure beats a pod that serves with a dead bus.
+5. **Check**: `kubectl -n kongroo get pods` (all `1/1 Running`), then
+   `./scripts/demo.ps1 -AdminUsername admin`
+
+   On a cold cluster the three API pods restart exactly once: they start before Postgres accepts
+   connections, the startup migration fails and the host stops; Kubernetes restarts them and they come
+   up clean. That single restart is expected, not a fault.
+6. **Watch the Lambda**: `sam logs --stack-name kongroo-notifications --name NotificationsFunction --tail`
+
+Images are pulled from the pinned `josealmeidajr/kongroo-<service>:0.1.0` tags (`k8s/kustomization.yaml`).
+To publish new images: build in each service repo, `docker push`, bump the tag, run `./sync.ps1`.
+
+### SNS/SQS topology
+
+The CloudFormation stack `kongroo-notifications` (`us-east-1`, role `LabRole`) creates the SNS topics
+`kongroo-user-created` and `kongroo-payment-processed`, the SQS queue `kongroo-notifications` and its
+dead-letter queue `kongroo-notifications-dlq` (3 receives → DLQ). The services create the rest of the
+topology themselves at bus start: topic `kongroo-order-placed` and the consumer queues
+`catalog-payment-processed-integration-event` and `payments-order-placed-integration-event`. The topic
+`kongroo-user-role-changed` only appears once a role change is actually published — MassTransit creates
+publish topics lazily, so its absence on a fresh stack is expected, not a failure.
+
+### Kubernetes layout
+
+```
+k8s/
+  kustomization.yaml            namespace, resources, images, configMapGenerators
+  namespace.yaml
+  aws-credentials.secret.yaml   placeholders — refreshed by scripts/set-aws-credentials.ps1
+  kong/                         kong.yaml (declarative, mounted from a generated Secret), deployment, LoadBalancer service, status service
+  prometheus/                   prometheus.yml (static targets), deployment, service
+  grafana/                      provisioning (datasource, dashboard provider), dashboards/kongroo.json, deployment, service, secret
+  postgres/  rabbitmq/  mongodb/  redis/
+  identity/  catalog/  payments/   ← generated by sync.ps1 from the service repos; do not edit
 ```
 
-Deploy the whole stack (PostgreSQL, RabbitMQ, and the four services) into the
-`kongroo` namespace with a single command:
+## Scripts
 
-```bash
-kubectl apply -k k8s/
-kubectl get pods -n kongroo
-```
+| Script | Purpose |
+| --- | --- |
+| `scripts/check.ps1` | `kong config parse`, `kubectl kustomize`, `sync.ps1 -Check` |
+| `scripts/demo.ps1` | Drives every graded flow through Kong (compose defaults; `-Gateway http://localhost -AdminUsername admin` for k8s) |
+| `scripts/set-aws-credentials.ps1` | Copies Learner Lab credentials into the cluster and restarts the APIs |
+| `sync.ps1` | Regenerates `k8s/<service>/` from the sibling repos (`-Check` detects drift) |
 
-Every `kubectl apply -k k8s/` re-applies the placeholder `aws-credentials` Secret. When the APIs run
-against AWS (Stage 2 onward), run `./scripts/set-aws-credentials.ps1` again after each apply.
+## Observability (Option A)
 
-Kustomize creates the namespace and orders ConfigMaps/Secrets/Services before
-Deployments automatically. Images are pulled from the pinned
-`josealmeidajr/kongroo-<service>:<tag>` Docker Hub tags (centralized in
-`k8s/kustomization.yaml` under `images:`).
+- Identity, Catalog and Payments expose `/metrics` (OpenTelemetry → Prometheus exporter): ASP.NET Core
+  request duration by route and status code, HttpClient, .NET runtime, MassTransit publish/consume.
+- Kong exposes edge metrics per service/route on its status port.
+- Prometheus scrapes four static targets every 15 s (`k8s/prometheus/prometheus.yml`), all UP:
+  `identity-api`, `catalog-api`, `payments-api`, `kong`.
+- Grafana provisions the **Kongroo** dashboard (uid `kongroo`): requests/s, error rate, p50/p95 latency,
+  requests by status code, Kong requests and latency, MassTransit message rates
+  (`messaging_masstransit_send_ea_total` / `messaging_masstransit_consume_ea_total` — the OpenTelemetry
+  Prometheus exporter appends the instrument unit, so a publish through the EF outbox is exported as a
+  send).
+- Lambda logs are in CloudWatch (`sam logs`), the centralized platform for the serverless piece.
+
+## Credentials (development values, committed on purpose)
+
+| Where | Value |
+| --- | --- |
+| Postgres / RabbitMQ / MongoDB | `kongroo` / `development` |
+| JWT signing key | `Development.SigningKey.AtLeast32Characters!` (identity, catalog, kong secrets must match) |
+| Bootstrap admin | compose `developer` / `Sup3rSecure!`; k8s `admin` / `Sup3rSecure!` |
+| Grafana admin | `admin` / `development` |
+| AWS | never committed — Learner Lab session values via `scripts/set-aws-credentials.ps1` |
