@@ -11,3 +11,5 @@ data:
   BootstrapAdmin__Email: "admin@kongroo.dev"
   BootstrapAdmin__Name: "Administrator"
   RabbitMq__Host: "rabbitmq"
+  Messaging__Transport: "AmazonSqs"
+  Aws__Region: "us-east-1"

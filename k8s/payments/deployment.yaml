@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: payments-api
-          image: josealmeidajr/kongroo-payments:0.0.5
+          image: josealmeidajr/kongroo-payments:0.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -36,6 +36,9 @@ spec:
                 name: payments-config
             - secretRef:
                 name: payments-secret
+            - secretRef:
+                name: aws-credentials
+                optional: true
           resources:
             requests:
               cpu: 100m

@@ -10,3 +10,6 @@ data:
   OutboxProcessing__PollingInterval: "00:00:05"
   OutboxProcessing__BatchSize: "20"
   RabbitMq__Host: "rabbitmq"
+  Messaging__Transport: "AmazonSqs"
+  Aws__Region: "us-east-1"
+  Mongo__Database: "kongroo_catalog"

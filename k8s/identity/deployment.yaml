@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: identity-api
-          image: josealmeidajr/kongroo-identity:0.0.7
+          image: josealmeidajr/kongroo-identity:0.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -36,6 +36,9 @@ spec:
                 name: identity-config
             - secretRef:
                 name: identity-secret
+            - secretRef:
+                name: aws-credentials
+                optional: true
           resources:
             requests:
               cpu: 100m
