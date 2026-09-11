@@ -127,6 +127,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Database: "Host=postgres;Database=kongroo_payments;Username=kongroo;Password=development"
+      Jwt__Issuer: "Kongroo.Identity.Api"
+      Jwt__Audience: "Kongroo.Identity.Api"
+      Jwt__SigningKey: "Development.SigningKey.AtLeast32Characters!"
+      Jwt__AccessTokenLifetimeMinutes: "15"
       RabbitMq__Host: "rabbitmq"
       RabbitMq__User: "kongroo"
       RabbitMq__Pass: "development"
