@@ -15,10 +15,18 @@ resources:
   - rabbitmq/pvc.yaml
   - rabbitmq/deployment.yaml
   - rabbitmq/service.yaml
+  - kong/deployment.yaml
+  - kong/service.yaml
+  - kong/status-service.yaml
   - identity
   - catalog
   - payments
   - notifications
+
+secretGenerator:
+  - name: kong-declarative
+    files:
+      - kong/kong.yaml
 
 images:
   - name: josealmeidajr/kongroo-identity

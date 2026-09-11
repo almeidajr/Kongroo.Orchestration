@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: kong
+  template:
+    metadata:
+      labels:
+        app: kong
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kong
+          image: kong:3.9
+          ports:
+            - name: proxy
+              containerPort: 8000
+            - name: status
+              containerPort: 8100
+          env:
+            - name: KONG_DATABASE
+              value: "off"
+            - name: KONG_DECLARATIVE_CONFIG
+              value: /kong/declarative/kong.yaml
+            - name: KONG_PREFIX
+              value: /kong_prefix
+            - name: KONG_PROXY_LISTEN
+              value: 0.0.0.0:8000
+            - name: KONG_ADMIN_LISTEN
+              value: "off"
+            - name: KONG_STATUS_LISTEN
+              value: 0.0.0.0:8100
+            - name: KONG_PROXY_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_PROXY_ERROR_LOG
+              value: /dev/stderr
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /status/ready
+              port: status
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /status/ready
+              port: status
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: status
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: declarative
+              mountPath: /kong/declarative
+              readOnly: true
+            - name: prefix
+              mountPath: /kong_prefix
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: declarative
+          secret:
+            secretName: kong-declarative
+        - name: prefix
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

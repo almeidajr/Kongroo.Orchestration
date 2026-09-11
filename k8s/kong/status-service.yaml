@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-status
+spec:
+  type: ClusterIP
+  selector:
+    app: kong
+  ports:
+    - name: status
+      port: 8100
+      targetPort: status
