@@ -9,7 +9,7 @@ Catalog additionally uses **MongoDB** (reviews) and **Redis** (HybridCache). Not
 **AWS Lambda** triggered by an SQS queue. **Prometheus** scrapes the services and Kong; **Grafana**
 shows the dashboard.
 
-See [README.md](./README.md) for how to run the system, and for the delivery report and video guide.
+See [README.md](./README.md) for how to run the system.
 
 | Component | Kind | Responsibility |
 | --- | --- | --- |

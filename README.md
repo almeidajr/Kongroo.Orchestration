@@ -175,7 +175,7 @@ k8s/
 
 ## Delivery documents
 
-- [`docs/delivery-report.md`](./docs/delivery-report.md) — the delivery report (Portuguese): repositories,
-  packages, images, AWS resources and the requirement-to-implementation table.
-- [`docs/video-recording-guide.md`](./docs/video-recording-guide.md) — the recording plan for the
-  ≤ 20-minute walkthrough video.
+The delivery report (Portuguese: repositories, packages, images, AWS resources and the
+requirement-to-implementation table) and the recording plan for the ≤ 20-minute walkthrough video are
+kept outside this repository and submitted through the FIAP portal. This repository carries the system
+and how to run it; [ARCHITECTURE.md](./ARCHITECTURE.md) is the technical reference.
