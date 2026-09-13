@@ -172,10 +172,3 @@ k8s/
 | Bootstrap admin | compose `developer` / `Sup3rSecure!`; k8s `admin` / `Sup3rSecure!` |
 | Grafana admin | `admin` / `development` |
 | AWS | never committed — Learner Lab session values via `scripts/set-aws-credentials.ps1` |
-
-## Delivery documents
-
-The delivery report (Portuguese: repositories, packages, images, AWS resources and the
-requirement-to-implementation table) and the recording plan for the ≤ 20-minute walkthrough video are
-kept outside this repository and submitted through the FIAP portal. This repository carries the system
-and how to run it; [ARCHITECTURE.md](./ARCHITECTURE.md) is the technical reference.
