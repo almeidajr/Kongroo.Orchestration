@@ -1,6 +1,6 @@
 # <img alt="Kongroo" src="./logo.png" width="40"/> Kongroo.Orchestration
 
-Central guide and infrastructure repository for **FIAP Cloud Games — Phase 3** (Kongroo). Application
+Central guide and infrastructure repository for **FIAP Cloud Games Phase 3** (Kongroo). Application
 code lives in the sibling service repositories; this repo holds Docker Compose, the Kubernetes manifests
 (Kustomize), the API gateway configuration, the monitoring stack and the scripts that tie them together.
 
@@ -18,33 +18,28 @@ Architecture reference: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Prerequisites
 
-- **Docker** — Rancher Desktop on this project's machine (with Kubernetes enabled for the k8s path).
-- **kubectl** — for the Kubernetes bring-up.
-- **PowerShell 7** — every script is `#requires -Version 7`.
-- **.NET 10 SDK** — only needed to build the service images from source.
+- **Docker**: Rancher Desktop on this project's machine (with Kubernetes enabled for the k8s path).
+- **kubectl**: for the Kubernetes bring-up.
+- **PowerShell 7**: every script is `#requires -Version 7`.
+- **.NET 10 SDK**: only needed to build the service images from source.
 - **Kubernetes path only**: an AWS Academy Learner Lab account, the AWS CLI, and the AWS SAM CLI with
-  `Amazon.Lambda.Tools`. Where MSI installers are blocked:
-  ```powershell
-  dotnet tool install -g Amazon.Lambda.Tools
-  uv tool install aws-sam-cli --python 3.13
-  uv tool install awscli --python 3.13
-  ```
+  `Amazon.Lambda.Tools`.
 - Pushing images to Docker Hub needs `docker login` first.
 
-## Phase 3 stack — the choices
+## Phase 3 stack: the choices
 
 | Requirement | Choice | Where |
 | --- | --- | --- |
 | API Gateway | **Kong Gateway 3.9 (OSS), DB-less**, `jwt` plugin (HS256, issuer `Kongroo.Identity.Api`), `prometheus` plugin | `k8s/kong/kong.yaml` (shared by compose and k8s) |
 | Serverless | **AWS Lambda (.NET 10)** triggered by **SQS**, subscribed to the MassTransit **SNS** topics; **SAM** IaC; AWS Academy Learner Lab | Kongroo.Notifications `template.yaml` |
 | Messaging | MassTransit with a config switch: **RabbitMQ** for compose and tests, **Amazon SQS/SNS** on k8s (`Messaging__Transport`) | service ConfigMaps |
-| Observability | **Option A — Prometheus + Grafana** as k8s manifests; OpenTelemetry `/metrics` on Identity, Catalog, Payments; Kong metrics | `k8s/prometheus`, `k8s/grafana` |
-| NoSQL | **MongoDB 8** — Catalog game reviews via `MongoDB.Driver` | `k8s/mongodb`, Catalog `POST/GET /games/{id}/reviews` |
-| Cache | **Redis 8** — Catalog `HybridCache` over `IDistributedCache` (StackExchange provider) for game reads, tag invalidation on writes | `k8s/redis` |
+| Observability | **Option A: Prometheus + Grafana** as k8s manifests; OpenTelemetry `/metrics` on Identity, Catalog, Payments; Kong metrics | `k8s/prometheus`, `k8s/grafana` |
+| NoSQL | **MongoDB 8** for Catalog game reviews via `MongoDB.Driver` | `k8s/mongodb`, Catalog `POST/GET /games/{id}/reviews` |
+| Cache | **Redis 8**: Catalog `HybridCache` over `IDistributedCache` (StackExchange provider) for game reads, tag invalidation on writes | `k8s/redis` |
 
 ## Two ways to run
 
-Docker Compose and Kubernetes share the host ports (8000, 3000, 9090 among others) — run only one mode
+Docker Compose and Kubernetes share the host ports (8000, 3000, 9090 among others), so run only one mode
 at a time.
 
 | Mode | What runs | Notifications |
@@ -72,7 +67,7 @@ repos/
 | Grafana | http://localhost:3000/d/kongroo | http://localhost:3000/d/kongroo | anonymous Viewer; `admin` / `development` |
 | Prometheus | http://localhost:9090 | `kubectl -n kongroo port-forward svc/prometheus 9090` | targets: identity-api, catalog-api, payments-api, kong |
 | RabbitMQ UI | http://localhost:15672 | `port-forward svc/rabbitmq 15672` | `kongroo` / `development` |
-| identity-api / catalog-api / payments-api | 5101 / 5102 / 5103 (direct, dev only) | ClusterIP 8080 only — go through Kong | |
+| identity-api / catalog-api / payments-api | 5101 / 5102 / 5103 (direct, dev only) | ClusterIP 8080 only; go through Kong | |
 | postgres / mongodb / redis | 5432 / 27017 / 6379 | ClusterIP | |
 
 ### Gateway routes
@@ -101,10 +96,10 @@ docker compose up --build -d
 1. **Start the lab** and paste **AWS Details → AWS CLI** into `~/.aws/credentials` (`[default]` profile).
 2. **Deploy the Lambda once** (from `../Kongroo.Notifications`): `sam build && sam deploy`. Redeploy only when the function changes.
 3. **Deploy the cluster**: `kubectl apply -k k8s/`
-4. **Load the session credentials** into the cluster — **run this after every `kubectl apply -k k8s/`** (the apply resets the Secret to placeholders) **and after every new lab session**:
-   `./scripts/set-aws-credentials.ps1` — writes the `aws-credentials` Secret and restarts the three APIs.
+4. **Load the session credentials** into the cluster. **Run this after every `kubectl apply -k k8s/`** (the apply resets the Secret to placeholders) **and after every new lab session**:
+   `./scripts/set-aws-credentials.ps1` writes the `aws-credentials` Secret and restarts the three APIs.
    The `masstransit-bus` health check is in the `ready` set, so stale credentials keep the API pods out of
-   Kong and Prometheus until this script runs — a loud failure beats a pod that serves with a dead bus.
+   Kong and Prometheus until this script runs; a loud failure beats a pod that serves with a dead bus.
 5. **Check**: `kubectl -n kongroo get pods` (all `1/1 Running`), then
    `./scripts/demo.ps1 -AdminUsername admin`
 
@@ -123,8 +118,8 @@ The CloudFormation stack `kongroo-notifications` (`us-east-1`, role `LabRole`) c
 dead-letter queue `kongroo-notifications-dlq` (3 receives → DLQ). The services create the rest of the
 topology themselves at bus start: topic `kongroo-order-placed` and the consumer queues
 `catalog-payment-processed-integration-event` and `payments-order-placed-integration-event`. The topic
-`kongroo-user-role-changed` only appears once a role change is actually published — MassTransit creates
-publish topics lazily, so its absence on a fresh stack is expected, not a failure.
+`kongroo-user-role-changed` only appears once a role change is actually published, because MassTransit
+creates publish topics lazily, so its absence on a fresh stack is expected, not a failure.
 
 ### Kubernetes layout
 
@@ -132,7 +127,7 @@ publish topics lazily, so its absence on a fresh stack is expected, not a failur
 k8s/
   kustomization.yaml            namespace, resources, images, configMapGenerators
   namespace.yaml
-  aws-credentials.secret.yaml   placeholders — refreshed by scripts/set-aws-credentials.ps1
+  aws-credentials.secret.yaml   placeholders, refreshed by scripts/set-aws-credentials.ps1
   kong/                         kong.yaml (declarative, mounted from a generated Secret), deployment, LoadBalancer service, status service
   prometheus/                   prometheus.yml (static targets), deployment, service
   grafana/                      provisioning (datasource, dashboard provider), dashboards/kongroo.json, deployment, service, secret
@@ -158,7 +153,7 @@ k8s/
   `identity-api`, `catalog-api`, `payments-api`, `kong`.
 - Grafana provisions the **Kongroo** dashboard (uid `kongroo`): requests/s, error rate, p50/p95 latency,
   requests by status code, Kong requests and latency, MassTransit message rates
-  (`messaging_masstransit_send_ea_total` / `messaging_masstransit_consume_ea_total` — the OpenTelemetry
+  (`messaging_masstransit_send_ea_total` / `messaging_masstransit_consume_ea_total`, where the OpenTelemetry
   Prometheus exporter appends the instrument unit, so a publish through the EF outbox is exported as a
   send).
 - Lambda logs are in CloudWatch (`sam logs`), the centralized platform for the serverless piece.
@@ -171,4 +166,4 @@ k8s/
 | JWT signing key | `Development.SigningKey.AtLeast32Characters!` (identity, catalog, kong secrets must match) |
 | Bootstrap admin | compose `developer` / `Sup3rSecure!`; k8s `admin` / `Sup3rSecure!` |
 | Grafana admin | `admin` / `development` |
-| AWS | never committed — Learner Lab session values via `scripts/set-aws-credentials.ps1` |
+| AWS | never committed; Learner Lab session values via `scripts/set-aws-credentials.ps1` |
