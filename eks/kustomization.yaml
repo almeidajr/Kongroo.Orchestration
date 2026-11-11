@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# EKS overlay on the local k3s manifests. ECR images at each repo's master SHA are set by apply.ps1 at render time.
+resources:
+  - ../k8s
+  - storageclass.yaml
+
+# SNS/SQS replaces RabbitMQ, Elastic Cloud replaces the local Elasticsearch, and pods take AWS credentials from the node (ADR 0001).
+patches:
+  - target:
+      name: ^(rabbitmq|rabbitmq-config|rabbitmq-pvc|elasticsearch|aws-credentials)$
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Unused
+      metadata:
+        name: unused
+
+replicas:
+  - name: identity-api
+    count: 2
+  - name: catalog-api
+    count: 2
+  - name: payments-api
+    count: 2

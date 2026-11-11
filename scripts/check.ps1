@@ -1,7 +1,7 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  Validate the orchestration repo: no secret.yaml anywhere, Kong declarative config parses, kustomize builds,
+  Validate the orchestration repo: no secret.yaml anywhere, Kong declarative config parses, kustomize builds, the EKS overlay renders,
   the CloudFormation templates lint (cfn-lint on PATH), and the synced service manifests have no drift.
 #>
 $ErrorActionPreference = "Stop"
@@ -26,6 +26,15 @@ if ($LASTEXITCODE -ne 0) { throw "kong.yaml failed to parse" }
 Write-Host "kubectl kustomize k8s/"
 kubectl kustomize "$root/k8s" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "kustomize build failed" }
+
+Write-Host "eks/apply.ps1 -DryRun with a dummy registry"
+$registry = "000000000000.dkr.ecr.us-east-1.amazonaws.com"
+$eks = & "$root/eks/apply.ps1" -DryRun -Registry $registry | Out-String
+if ($eks -match "(?m)^  name: (rabbitmq\S*|elasticsearch|aws-credentials)\s*$") { throw "EKS overlay still renders $($Matches[1])" }
+if ($eks -notmatch "(?m)^kind: StorageClass") { throw "EKS overlay renders no gp3 StorageClass" }
+$ecrImages = [regex]::Matches($eks, "image: $([regex]::Escape($registry))/kongroo-(identity|catalog|payments):[0-9a-f]{40}\s")
+if ($ecrImages.Count -ne 3 -or $eks -match "josealmeidajr/") { throw "EKS overlay must run the three APIs from ECR at SHA tags" }
+if ([regex]::Matches($eks, "(?m)^  replicas: 2\s*$").Count -ne 3) { throw "EKS overlay must run 2 replicas of each API" }
 
 Write-Host "docker compose config (throwaway generated env file)"
 $envFile = Join-Path $root "check-env.tmp" # git-ignored (*.tmp)
