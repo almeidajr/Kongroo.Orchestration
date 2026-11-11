@@ -32,8 +32,8 @@ finally {
     Remove-Item $envFile -ErrorAction SilentlyContinue
 }
 
-Write-Host "cfn-lint eks/registry-stack.yaml eks/cluster-stack.yaml (with eks/rules)"
-cfn-lint --append-rules "$root/eks/rules" -- "$root/eks/registry-stack.yaml" "$root/eks/cluster-stack.yaml"
+Write-Host "cfn-lint eks/*-stack.yaml (with eks/rules)"
+cfn-lint --append-rules "$root/eks/rules" -- (Get-ChildItem "$root/eks/*-stack.yaml").FullName
 if ($LASTEXITCODE -ne 0) { throw "cfn-lint failed on the eks templates" }
 
 Write-Host "sync.ps1 -Check"

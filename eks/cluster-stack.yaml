@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   FIAP Cloud Games EKS cluster, created and deleted each cloud day. Runs entirely on the Learner Lab's
-  LabRole (workspace ADR 0001), so it creates no IAM role or policy.
+  LabRole and creates no IAM role or policy, because the lab account cannot create them.
 
 Resources:
   Vpc:
@@ -83,6 +83,7 @@ Resources:
         EndpointPublicAccess: true
         EndpointPrivateAccess: false
       # The creator (voclabs) gets the only admin entry; the node group adds LabRole's EC2_LINUX entry itself.
+      # Never deploy with a service role (--role-arn): the creator would become LabRole and nodes could not join.
       AccessConfig:
         AuthenticationMode: API
         BootstrapClusterCreatorAdminPermissions: true
@@ -102,6 +103,9 @@ Resources:
     DependsOn:
       - VpcCniAddon
       - KubeProxyAddon
+      - PublicDefaultRoute
+      - PublicSubnetARouteTableAssociation
+      - PublicSubnetBRouteTableAssociation
     Properties:
       ClusterName: !Ref Cluster
       NodeRole: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/LabRole

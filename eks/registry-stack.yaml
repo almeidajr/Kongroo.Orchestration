@@ -1,5 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: FIAP Cloud Games image registry. Stays up between cloud days so images survive cluster teardown.
+Description: >-
+  FIAP Cloud Games image registry. Stays up between cloud days so images survive cluster teardown.
 
 Resources:
   IdentityRepository:
