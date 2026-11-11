@@ -28,14 +28,15 @@ $images = foreach ($name in "Identity", "Catalog", "Payments") {
     "  - name: josealmeidajr/kongroo-$service`n    newName: $Registry/kongroo-$service`n    newTag: `"$sha`""
 }
 
-# Outside eks/ (a folder inside it is a kustomize cycle) and git-ignored (*.tmp), so no tracked file holds the account or SHAs.
-$render = Join-Path $root "eks-render.tmp"
-New-Item -ItemType Directory -Force $render | Out-Null
+# Outside eks/ (a folder inside it is a kustomize cycle), git-ignored (*.tmp) so no tracked file holds the
+# account or SHAs, and unique per run so concurrent runs do not overwrite each other.
+$renderDirectory = Join-Path $root "eks-render-$(New-Guid).tmp"
+New-Item -ItemType Directory $renderDirectory | Out-Null
 try {
-    Set-Content "$render/kustomization.yaml" "resources:`n  - ../eks`nimages:`n$($images -join "`n")"
-    if ($DryRun) { kubectl kustomize $render } else { kubectl --context kongroo-eks apply -k $render }
+    Set-Content "$renderDirectory/kustomization.yaml" "resources:`n  - ../eks`nimages:`n$($images -join "`n")"
+    if ($DryRun) { kubectl kustomize $renderDirectory } else { kubectl --context kongroo-eks apply -k $renderDirectory }
     if ($LASTEXITCODE -ne 0) { throw "kubectl failed on the EKS overlay" }
 }
 finally {
-    Remove-Item -Recurse -Force $render -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $renderDirectory -ErrorAction SilentlyContinue
 }

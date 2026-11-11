@@ -6,7 +6,7 @@ resources:
   - ../k8s
   - storageclass.yaml
 
-# SNS/SQS replaces RabbitMQ, Elastic Cloud replaces the local Elasticsearch, and pods take AWS credentials from the node (ADR 0001).
+# SNS/SQS replaces RabbitMQ and Elastic Cloud the local Elasticsearch; pods reach the node's LabRole credentials through IMDSv2.
 patches:
   - target:
       name: ^(rabbitmq|rabbitmq-config|rabbitmq-pvc|elasticsearch|aws-credentials)$
