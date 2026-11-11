@@ -30,15 +30,16 @@ if ($LASTEXITCODE -ne 0) { throw "kustomize build failed" }
 
 Write-Host "eks/apply.ps1 -DryRun, default and -LocalSearch, with a dummy registry"
 $registry = "000000000000.dkr.ecr.us-east-1.amazonaws.com"
+$alwaysDropped = "rabbitmq\S*|aws-credentials"
 $eksManifests = & "$root/eks/apply.ps1" -DryRun -Registry $registry | Out-String
-if ($eksManifests -match "(?m)^  name: (rabbitmq\S*|elasticsearch|aws-credentials)\s*$") { throw "EKS overlay still renders $($Matches[1])" }
+if ($eksManifests -match "(?m)^  name: ($alwaysDropped|elasticsearch)\s*$") { throw "EKS overlay still renders $($Matches[1])" }
 if ($eksManifests -notmatch "(?m)^kind: StorageClass") { throw "EKS overlay renders no gp3 StorageClass" }
 $ecrImages = [regex]::Matches($eksManifests, "image: $([regex]::Escape($registry))/kongroo-(identity|catalog|payments):[0-9a-f]{40}\s")
 if ($ecrImages.Count -ne 3 -or $eksManifests -match "josealmeidajr/") { throw "EKS overlay must run the three APIs from ECR at SHA tags" }
 if ([regex]::Matches($eksManifests, "(?m)^  replicas: 2\s*$").Count -ne 3) { throw "EKS overlay must run 2 replicas of each API" }
 
 $localSearchManifests = & "$root/eks/apply.ps1" -DryRun -Registry $registry -LocalSearch | Out-String
-if ($localSearchManifests -match "(?m)^  name: (rabbitmq\S*|aws-credentials)\s*$") { throw "-LocalSearch overlay still renders $($Matches[1])" }
+if ($localSearchManifests -match "(?m)^  name: ($alwaysDropped)\s*$") { throw "-LocalSearch overlay still renders $($Matches[1])" }
 if ([regex]::Matches($localSearchManifests, "(?m)^  name: elasticsearch\s*$").Count -ne 2) { throw "-LocalSearch overlay must keep the Elasticsearch Deployment and Service" }
 if ($localSearchManifests -notmatch 'Search__Uri: "?http://elasticsearch:9200"?\s') { throw "-LocalSearch overlay must point catalog-config at the in-cluster Elasticsearch" }
 

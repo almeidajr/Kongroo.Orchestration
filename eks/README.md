@@ -86,7 +86,7 @@ lasts 14 days: every cloud day must fit inside it.
    `kubectl --context kongroo-eks -n kongroo get pods` shows no `ImagePullBackOff` (pods still starting are fine: `smoke.ps1` waits for
    them).
 
-**Manifest-only change during the day:** `./eks/apply.ps1` renders each API at its repo's `origin/master` SHA. If that SHA has no ECR
+**Manifest-only change during the day:** `./eks/apply.ps1` (`-LocalSearch` on a degraded-search day, Recovery (d)) renders each API at its repo's `origin/master` SHA. If that SHA has no ECR
 image yet (its pipeline is still running, or ran while CI was disarmed), the new pods sit in `ImagePullBackOff` while the old pods keep
 serving. Run the repo's workflow first, wait for it to go green, then apply:
 

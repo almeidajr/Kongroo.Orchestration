@@ -4,9 +4,9 @@
   Start a cloud day: the registry and cluster stacks, the day's Secrets, each API at its master HEAD on kongroo-eks, CI armed,
   and the Kong URL written to eks/.env.
 .DESCRIPTION
-  Needs the Learner Lab keys in ~/.aws/credentials and the hand-filled eks/cloud.env. Every value in eks/.env is new on each run,
-  so it refuses to run while namespace kongroo exists on the cluster: run down.ps1 first. The current kube context is never
-  changed; the cluster is reached through context kongroo-eks.
+  Needs the Learner Lab keys in ~/.aws/credentials and, unless -LocalSearch, the hand-filled eks/cloud.env. Every value in
+  eks/.env is new on each run, so it refuses to run while namespace kongroo exists on the cluster: run down.ps1 first. The
+  current kube context is never changed; the cluster is reached through context kongroo-eks.
 .PARAMETER LocalSearch
   Degraded search mode for a lapsed Elastic Cloud trial (eks/README.md Recovery (d)): Catalog searches the in-cluster
   Elasticsearch, and eks/cloud.env is neither needed nor read.
@@ -21,7 +21,8 @@ $root = Split-Path $PSScriptRoot -Parent
 aws sts get-caller-identity | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws sts get-caller-identity failed: refresh credentials" }
 
-if (-not $LocalSearch) { $cloud = Read-CloudEnv }
+$usesElasticCloud = -not $LocalSearch
+if ($usesElasticCloud) { $cloud = Read-CloudEnv }
 
 # No --role-arn: CloudFormation must call EKS as the creator (voclabs), or LabRole gets the admin entry and nodes cannot join (ADR 0001).
 $stacks = [ordered]@{ "kongroo-registry" = "registry-stack.yaml"; "kongroo-cluster" = "cluster-stack.yaml" }
@@ -43,7 +44,7 @@ if ($liveNamespace) { throw "Namespace kongroo already exists in context $kubeCo
 
 # The day's Postgres starts empty, so yesterday's documents must go; Catalog recreates the index and backfills it.
 # The in-cluster Elasticsearch keeps no volume, so -LocalSearch starts with no index to clear.
-if (-not $LocalSearch) {
+if ($usesElasticCloud) {
     $basic = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($cloud.SEARCH_USERNAME):$($cloud.SEARCH_PASSWORD)"))
     $response = Invoke-WebRequest -Method Delete -Uri "$($cloud.SEARCH_URI.TrimEnd('/'))/games" -Headers @{ Authorization = "Basic $basic" } -SkipHttpErrorCheck
     if ($response.StatusCode -notin 200, 404) { throw "Deleting the Elastic Cloud games index returned $($response.StatusCode): $($response.Content)" }
