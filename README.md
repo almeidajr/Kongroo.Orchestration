@@ -183,9 +183,8 @@ k8s/
 No password, key, token or connection string is committed. Locally, `scripts/new-secrets.ps1` generates
 random values into the git-ignored `.env` once and reuses them on every rerun; from that file it creates
 the Kubernetes Secrets in the current context and sets the APIs' user-secrets (hosts rewritten to
-`localhost`). The EKS deployment is planned, not built yet: `eks/up.ps1`, `eks/arm.ps1` and the EKS
-overlay do not exist. Once they do, each cloud day `eks/up.ps1` will run the same script against EKS
-with a fresh git-ignored `eks/.env`, so cloud and local never share a value. Usernames, hostnames,
+`localhost`). On EKS, each cloud day `eks/up.ps1` runs the same script against the cluster with a fresh
+git-ignored `eks/.env`, so cloud and local never share a value (runbook: [`eks/README.md`](eks/README.md)). Usernames, hostnames,
 issuer and audience are configuration, not secrets.
 
 | Credential | Local source | Cloud source (EKS, planned) | How it is injected |

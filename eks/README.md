@@ -8,8 +8,7 @@ The cluster is reached only through kube context `kongroo-eks`; every command pa
 and the current context stays on local k3s. The day's Kong address is `KONG_URL` in the git-ignored `eks/.env`, written by `up.ps1`; it
 changes every day and is never committed. This page writes it as `<kong-lb-hostname>`, and Postman reads it through `{{baseUrl}}`.
 
-Needs: `aws` CLI v2, `kubectl`, `gh` logged in with admin rights on the four service repos, `git` with the sibling repos cloned, Docker
-(for k6).
+Needs: `aws` CLI v2, `kubectl`, `gh` logged in with admin rights on the four service repos, `git` with the sibling repos cloned.
 
 ## Rules for every cloud day
 
@@ -152,12 +151,14 @@ Check: it ends with `Showcase games (k6: -e SHOWCASE=…)` and their ids. It is 
 Check: `kubectl --context kongroo-eks -n kongroo get pods` shows every pod `Running` and Ready. A datastore pod stuck `Pending`: (b).
 
 **(b) A datastore pod is `Pending` on an AZ-pinned volume** (`kubectl --context kongroo-eks -n kongroo describe pod <pod>` says
-`volume node affinity conflict`: its node was replaced in the other zone). Its data is lost; delete the claim and the pod
-(`<name>` is `postgres` or `mongodb`):
+`volume node affinity conflict`: its node was replaced in the other zone). Its data is lost; delete the claim and the pod, then
+recreate the claim from its base manifest (the overlay does not change it; `<name>` is `postgres` or `mongodb`):
 
 ```powershell
 kubectl --context kongroo-eks -n kongroo delete pvc <name>-pvc --wait=false
 kubectl --context kongroo-eks -n kongroo delete pod -l app=<name>
+kubectl --context kongroo-eks -n kongroo wait --for=delete pvc/<name>-pvc --timeout=2m
+kubectl --context kongroo-eks -n kongroo apply -f k8s/<name>/pvc.yaml
 ```
 
 Check: `kubectl --context kongroo-eks -n kongroo get pods` shows it Ready again. If it was `postgres`, restart the APIs so their startup
@@ -174,7 +175,8 @@ Then rerun section 3.
 Check: `down.ps1` prints `safe to End Lab`, then `up.ps1` ends with the `Kong:` line. Continue at 1.4.
 
 **(d) The Elastic Cloud trial lapsed** (the console says the trial ended; smoke check 4 fails). Never start a second trial: run the day in
-degraded search mode, with Catalog searching the in-cluster Elasticsearch.
+degraded search mode, with Catalog searching the in-cluster Elasticsearch. The command arrives with ticket 18: `./eks/up.ps1 -LocalSearch`
+(after `./eks/down.ps1` if the cluster is up). Check: section 2 passes, search check included.
 
 ## 6. Video day
 
@@ -208,7 +210,7 @@ Three cloud days, each about $1–2 (two t3.medium nodes, the EKS control plane 
 the 14-day Elastic trial:
 
 1. **First EKS deployment:** run this page top to bottom, fix what breaks in the repo it belongs to, and update this page with it.
-2. **Dress rehearsal:** section 6 with the whole video, recorded and timed.
+2. **Dress rehearsal:** section 6 with the whole video script, untimed.
 3. **Video day:** section 6.
 
 Days 2 and 3 may merge if day 1 goes cleanly. Between cloud days nothing bills: only the ECR registry and the `kongroo-notifications`
