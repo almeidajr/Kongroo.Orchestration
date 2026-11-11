@@ -8,7 +8,8 @@
 .PARAMETER AdminUsername
   Bootstrap admin username. Compose: developer (default). Kubernetes: admin
 .PARAMETER AdminPassword
-  Bootstrap admin password. Default: BOOTSTRAP_ADMIN_PASSWORD from the .env written by new-secrets.ps1.
+  Bootstrap admin password. Default: BOOTSTRAP_ADMIN_PASSWORD from the .env written by new-secrets.ps1,
+  which only compose uses. Kubernetes: pass the cluster's bootstrap admin password explicitly.
 #>
 param(
     [string]$Gateway = "http://localhost:8000",
