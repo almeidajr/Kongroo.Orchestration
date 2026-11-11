@@ -51,8 +51,8 @@ configMapGenerator:
 
 images:
   - name: josealmeidajr/kongroo-identity
-    newTag: "9621a4abec153ab7225257b08be6c647ebe4b69f"
+    newTag: "8aa3e7c31bb0188bdd7669ed37828fd51fa05298"
   - name: josealmeidajr/kongroo-catalog
-    newTag: "71d7f1ab2cbd2cd735442eda663a47886fdda4fb"
+    newTag: "d51002fc7c6af794a72ad53572b6105930ff2919"
   - name: josealmeidajr/kongroo-payments
-    newTag: "46ffdbeb93cd2afadda5e983bce3383038fccf51"
+    newTag: "3b491dfff3adeefbcce81385333e704b2d998bf9"
