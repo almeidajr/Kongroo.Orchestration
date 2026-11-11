@@ -91,6 +91,8 @@ docker compose up --build -d
 ```
 
 `-SkipKubernetes` leaves the cluster alone; `-SkipUserSecrets` skips the APIs' user-secrets on a machine without the .NET SDK.
+If `docker compose up` from Windows fails with "invalid volume specification" (Windows-path bind mounts on Rancher Desktop's
+WSL-hosted engine), run the same command from a WSL shell in this folder.
 Compose reads `.env` on its own and stops with "run scripts/new-secrets.ps1" when it is missing. `init-db.sql` creates the three
 PostgreSQL databases on the first start (`docker compose down -v` to reset).
 
@@ -121,24 +123,23 @@ during a cloud day: two stacks on the current keys compete for the same messages
 
 Images are pulled from Docker Hub, `josealmeidajr/kongroo-<service>:<commit SHA>`, pinned in `k8s/kustomization.yaml` to each
 service's `master` SHA as it ran on EKS after the first cloud day. These tags serve local k3s only; production runs each repo's
-`master` HEAD (see [CI/CD](#cicd)). To move k3s forward, bump the SHAs (each one pushed to Docker Hub by its pipeline) and run
-`./sync.ps1`.
+`master` HEAD (see [CI/CD](#cicd)). To move k3s forward, bump the SHAs (each one pushed to Docker Hub by its pipeline), run
+`./sync.ps1` if a service's `k8s/` folder changed, then repeat steps 2 and 3 (`kubectl apply -k k8s/`, `./scripts/set-aws-credentials.ps1`).
 
 ### 3. AWS EKS: the cloud day
 
 A Learner Lab session lasts four hours and the nodes bill while they run, so the cluster lives for one cloud day: brought up from
 nothing, then torn down to zero. The ECR registry stack and the `kongroo-notifications` stack stay between days.
 **[eks/README.md](./eks/README.md) is the runbook** (bring-up, smoke, seed, teardown, recovery, video day); follow it rather than
-this summary. The scripts it drives:
+this summary. The `eks/*.ps1` scripts it drives are listed under [Scripts](#scripts). `-LocalSearch` on `up.ps1` / `apply.ps1` is
+the degraded search mode for a lapsed Elastic Cloud trial: Catalog searches the in-cluster Elasticsearch instead.
 
-- `eks/up.ps1` deploys the registry and cluster stacks, writes the day's fresh Secrets, arms CI, deploys the Notifications stack
-  through its pipeline when the lab account lacks it, applies the overlay with each API at its `master` HEAD, dispatches the
-  pipeline of any API whose image is not yet in ECR, and writes the Kong load balancer URL to the git-ignored `eks/.env`.
-- `eks/smoke.ps1` proves the day works end to end; `scripts/seed-games.ps1 -Context kongroo-eks` seeds the demo catalog.
-- `eks/apply.ps1` re-renders and applies the overlay (manifest-only changes); `eks/arm.ps1` refreshes CI's lab keys after every
-  Start Lab press; `eks/down.ps1` disarms CI, deletes the namespace and the cluster stack, and prints `safe to End Lab`.
-- `-LocalSearch` on `up.ps1` / `apply.ps1` is the degraded search mode for a lapsed Elastic Cloud trial: Catalog searches the
-  in-cluster Elasticsearch instead.
+Seeding the demo catalog on EKS signs in through that day's Kong with that day's admin password, both from `eks/.env`:
+
+```powershell
+$eks = Get-Content -Raw eks/.env | ConvertFrom-StringData
+./scripts/seed-games.ps1 -Gateway $eks.KONG_URL -AdminPassword $eks.BOOTSTRAP_ADMIN_PASSWORD -Context kongroo-eks
+```
 
 Every EKS `kubectl` call passes `--context kongroo-eks`, so the current context stays on local k3s. The day's Kong hostname
 changes every day and is never committed; docs write it as `<kong-lb-hostname>`.
@@ -180,12 +181,12 @@ blank `q` answers 400, and 503 while Elasticsearch is down (the rest of Catalog 
 
 ```powershell
 $token = (Invoke-RestMethod -Method POST -Uri http://localhost:8000/identity/tokens -ContentType application/json `
-    -Body (@{ username = "admin"; password = "<BOOTSTRAP_ADMIN_PASSWORD>" } | ConvertTo-Json)).accessToken
+    -Body (@{ username = "admin"; password = "<BOOTSTRAP_ADMIN_PASSWORD>" } | ConvertTo-Json)).accessToken   # compose: "developer"
 Invoke-RestMethod "http://localhost:8000/catalog/search?q=lighthuose&limit=5" -Headers @{ Authorization = "Bearer $token" }
 ```
 
 The misspelled `lighthuose` finds the seeded "… Lighthouse" games (`scripts/seed-games.ps1`); each hit carries `id`, `title`,
-`description`, `priceAmount`, `currency` and `score`. The admin user is `developer` under compose and `admin` on k3s and EKS.
+`description`, `priceAmount`, `currency` and `score`.
 
 - **Indexing is asynchronous.** Every game create, update and delete publishes `GameIndexRequested` through Catalog's EF Core bus
   outbox, atomically with the write; Catalog consumes it, reloads the game and upserts or deletes its document in the `games` index,
@@ -238,6 +239,9 @@ kubectl -n kongroo exec deploy/redis -- redis-cli --scan                        
 | identity-api / catalog-api / payments-api | 5101 / 5102 / 5103 (direct, dev only) | ClusterIP 8080; go through Kong | 2 replicas each, ClusterIP 8080 | |
 | postgres / mongodb / redis | 5432 / 27017 / 6379 | ClusterIP | ClusterIP, EBS `gp3` volumes | |
 | elasticsearch | http://localhost:9200 | ClusterIP 9200 | Elastic Cloud (in-cluster with `-LocalSearch`) | `elastic` / `ELASTIC_PASSWORD` from `.env`; plain HTTP, `elasticsearch:9.5.5` |
+
+On Rancher Desktop's k3s, `kubectl port-forward` can fail with `socat not found`. Query Prometheus from Grafana's **Explore** instead
+(signed in as `admin`); the RabbitMQ UI has nothing to show there, since k3s runs on SNS/SQS.
 
 ### Gateway routes
 
@@ -301,7 +305,7 @@ Each script's `Get-Help <script> -Full` is the source of truth for what it does 
 | `eks/up.ps1` | Starts a cloud day: stacks, Secrets, CI armed, Notifications stack if missing, overlay at each `master` HEAD, Kong URL in `eks/.env` |
 | `eks/smoke.ps1` | Proves the cloud day end to end: Kong load balancer, `demo.ps1`, the Lambda's confirmation log, a misspelled search |
 | `eks/apply.ps1` | Renders the EKS overlay at each repo's `origin/master` SHA and applies it (manifest-only changes; `-DryRun` prints it) |
-| `eks/arm.ps1` | Sets the lab keys and gate variables on the four service repos (`-Disarm` removes them) |
+| `eks/arm.ps1` | Sets the lab keys and gate variables on the four service repos (`-Disarm` removes them); see [CI/CD](#cicd) |
 | `eks/down.ps1` | Ends a cloud day: disarms CI, deletes the namespace and cluster stack, prints `safe to End Lab` only when nothing is left billing |
 
 ## Observability
