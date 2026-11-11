@@ -78,7 +78,8 @@ Invoke-Check "3. Notifications Lambda logged the purchase confirmation" {
             --start-time $demoStartedAt.ToUnixTimeMilliseconds() --filter-pattern confirmation `
             --query "length(events[?contains(message, 'purchase confirmation') && contains(message, '$($demo.OrderId)')])" --output text
         if ($LASTEXITCODE -ne 0) { throw "aws logs filter-log-events failed on $logGroup" }
-        [int]$count -gt 0
+        # The CLI paginates and applies --query per page, so text output is one count per page.
+        ($count | Measure-Object -Sum).Sum -gt 0
     }
 }
 
