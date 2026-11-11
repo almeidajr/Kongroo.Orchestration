@@ -1,15 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# EKS overlay on the local k3s manifests. ECR images at each repo's master SHA are set by apply.ps1 at render time.
+# EKS overlay on the local k3s manifests. ECR images at each repo's master SHA and the cloud-search component are set by
+# apply.ps1 at render time.
 resources:
   - ../k8s
   - storageclass.yaml
 
-# SNS/SQS replaces RabbitMQ and Elastic Cloud the local Elasticsearch; pods reach the node's LabRole credentials through IMDSv2.
+# SNS/SQS replaces RabbitMQ; pods reach the node's LabRole credentials through IMDSv2. The local Elasticsearch goes in the
+# cloud-search component, which apply.ps1 adds unless -LocalSearch.
 patches:
   - target:
-      name: ^(rabbitmq|rabbitmq-config|rabbitmq-pvc|elasticsearch|aws-credentials)$
+      name: ^(rabbitmq|rabbitmq-config|rabbitmq-pvc|aws-credentials)$
     patch: |-
       $patch: delete
       apiVersion: v1

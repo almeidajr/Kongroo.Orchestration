@@ -193,13 +193,13 @@ issuer and audience are configuration, not secrets.
 | `RABBITMQ_PASSWORD` | `.env` | `eks/.env` (unused: EKS runs on SQS, the overlay will drop RabbitMQ) | compose; Secret `rabbitmq-secret`; `RabbitMq__Pass` in each API's Secret and user-secrets |
 | `MONGO_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose; Secret `mongodb-secret` |
 | `GRAFANA_ADMIN_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose; Secret `grafana-secret` |
-| `ELASTIC_PASSWORD` | `.env` | `eks/.env` (unused: the overlay will drop the local Elasticsearch, Catalog will use Elastic Cloud) | compose; Secret `elasticsearch-secret`; Catalog `Search__Password` in `catalog-secret` and user-secrets |
+| `ELASTIC_PASSWORD` | `.env` | `eks/.env` (unused: the overlay will drop the local Elasticsearch, Catalog will use Elastic Cloud; used by the degraded `eks/up.ps1 -LocalSearch`) | compose; Secret `elasticsearch-secret`; Catalog `Search__Password` in `catalog-secret` and user-secrets |
 | `JWT_SIGNING_KEY` (hex) | `.env` | `eks/.env`, new each cloud day | `Jwt__SigningKey` in `identity-secret`, `catalog-secret`, `payments-secret` and user-secrets; Kong reads it from `kong-secret` (compose: `.env`) and substitutes it into `kong.yaml` at start |
 | `BOOTSTRAP_ADMIN_PASSWORD` | `.env` | `eks/.env`, new each cloud day | `BootstrapAdmin__Password` in `identity-secret` and user-secrets; `demo.ps1` reads it from `.env` |
 | `IDENTITY_DATABASE_CONNECTION_STRING`, `CATALOG_DATABASE_CONNECTION_STRING`, `PAYMENTS_DATABASE_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | `ConnectionStrings__Database` in each API's Secret and user-secrets |
 | `MONGO_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | Catalog `Mongo__ConnectionString` in `catalog-secret` and user-secrets |
 | `REDIS_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | Catalog `ConnectionStrings__Redis` in `catalog-secret` and user-secrets |
-| Elastic Cloud user (`kongroo-catalog`) | none: local search uses the `elastic` user above | `SEARCH_URI` / `SEARCH_USERNAME` / `SEARCH_PASSWORD` in the hand-filled, git-ignored `eks/cloud.env`; `eks/up.ps1` will stop without it | `Search__Uri`, `Search__Username`, `Search__Password` in `catalog-secret`, which overrides `catalog-config` |
+| Elastic Cloud user (`kongroo-catalog`) | none: local search uses the `elastic` user above | `SEARCH_URI` / `SEARCH_USERNAME` / `SEARCH_PASSWORD` in the hand-filled, git-ignored `eks/cloud.env`; `eks/up.ps1` will stop without it (`-LocalSearch` reads none of it) | `Search__Uri`, `Search__Username`, `Search__Password` in `catalog-secret`, which overrides `catalog-config` |
 | AWS | Learner Lab session keys pasted into `~/.aws/credentials` | none in the cluster: pods will use the node's `LabRole` through IMDS; CI will get the session keys as repository secrets from `eks/arm.ps1` | k3s: `scripts/set-aws-credentials.ps1` fills the `aws-credentials` Secret (committed with placeholders only); AWS SDK default credential chain |
 
 Known trade-off: `new-secrets.ps1` passes values to `kubectl create secret --from-literal`, so they are

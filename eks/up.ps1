@@ -7,7 +7,13 @@
   Needs the Learner Lab keys in ~/.aws/credentials and the hand-filled eks/cloud.env. Every value in eks/.env is new on each run,
   so it refuses to run while namespace kongroo exists on the cluster: run down.ps1 first. The current kube context is never
   changed; the cluster is reached through context kongroo-eks.
+.PARAMETER LocalSearch
+  Degraded search mode for a lapsed Elastic Cloud trial (eks/README.md Recovery (d)): Catalog searches the in-cluster
+  Elasticsearch, and eks/cloud.env is neither needed nor read.
 #>
+param(
+    [switch]$LocalSearch
+)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot/common.ps1"
@@ -15,7 +21,7 @@ $root = Split-Path $PSScriptRoot -Parent
 aws sts get-caller-identity | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws sts get-caller-identity failed: refresh credentials" }
 
-$cloud = Read-CloudEnv
+if (-not $LocalSearch) { $cloud = Read-CloudEnv }
 
 # No --role-arn: CloudFormation must call EKS as the creator (voclabs), or LabRole gets the admin entry and nodes cannot join (ADR 0001).
 $stacks = [ordered]@{ "kongroo-registry" = "registry-stack.yaml"; "kongroo-cluster" = "cluster-stack.yaml" }
@@ -33,15 +39,18 @@ $liveNamespace = kubectl --context $kubeContext get namespace kongroo --ignore-n
 if ($LASTEXITCODE -ne 0) { throw "kubectl cannot reach cluster $cluster through context $kubeContext" }
 if ($liveNamespace) { throw "Namespace kongroo already exists in context $kubeContext (a live cloud day): run eks/down.ps1 first, then up.ps1." }
 
-& "$root/scripts/new-secrets.ps1" -Target Eks
+& "$root/scripts/new-secrets.ps1" -Target Eks -LocalSearch:$LocalSearch
 
 # The day's Postgres starts empty, so yesterday's documents must go; Catalog recreates the index and backfills it.
-$basic = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($cloud.SEARCH_USERNAME):$($cloud.SEARCH_PASSWORD)"))
-$response = Invoke-WebRequest -Method Delete -Uri "$($cloud.SEARCH_URI.TrimEnd('/'))/games" -Headers @{ Authorization = "Basic $basic" } -SkipHttpErrorCheck
-if ($response.StatusCode -notin 200, 404) { throw "Deleting the Elastic Cloud games index returned $($response.StatusCode): $($response.Content)" }
-Write-Output "Elastic Cloud games index cleared (HTTP $($response.StatusCode))"
+# The in-cluster Elasticsearch keeps no volume, so -LocalSearch starts with no index to clear.
+if (-not $LocalSearch) {
+    $basic = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($cloud.SEARCH_USERNAME):$($cloud.SEARCH_PASSWORD)"))
+    $response = Invoke-WebRequest -Method Delete -Uri "$($cloud.SEARCH_URI.TrimEnd('/'))/games" -Headers @{ Authorization = "Basic $basic" } -SkipHttpErrorCheck
+    if ($response.StatusCode -notin 200, 404) { throw "Deleting the Elastic Cloud games index returned $($response.StatusCode): $($response.Content)" }
+    Write-Output "Elastic Cloud games index cleared (HTTP $($response.StatusCode))"
+}
 
-& "$PSScriptRoot/apply.ps1"
+& "$PSScriptRoot/apply.ps1" -LocalSearch:$LocalSearch
 
 # Armed before any dispatch: the dispatched run pushes to ECR and deploys only when ECR_REGISTRY and the keys are set.
 & "$PSScriptRoot/arm.ps1"

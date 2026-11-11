@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Validate the orchestration repo: no secret.yaml anywhere, Kong declarative config parses, kustomize
-  builds, the EKS overlay renders, the CloudFormation templates lint (cfn-lint on PATH), and the synced
+  builds, the EKS overlay renders (default and -LocalSearch), the CloudFormation templates lint (cfn-lint on PATH), and the synced
   service manifests have no drift.
 #>
 $ErrorActionPreference = "Stop"
@@ -28,7 +28,7 @@ Write-Host "kubectl kustomize k8s/"
 kubectl kustomize "$root/k8s" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "kustomize build failed" }
 
-Write-Host "eks/apply.ps1 -DryRun with a dummy registry"
+Write-Host "eks/apply.ps1 -DryRun, default and -LocalSearch, with a dummy registry"
 $registry = "000000000000.dkr.ecr.us-east-1.amazonaws.com"
 $eksManifests = & "$root/eks/apply.ps1" -DryRun -Registry $registry | Out-String
 if ($eksManifests -match "(?m)^  name: (rabbitmq\S*|elasticsearch|aws-credentials)\s*$") { throw "EKS overlay still renders $($Matches[1])" }
@@ -36,6 +36,11 @@ if ($eksManifests -notmatch "(?m)^kind: StorageClass") { throw "EKS overlay rend
 $ecrImages = [regex]::Matches($eksManifests, "image: $([regex]::Escape($registry))/kongroo-(identity|catalog|payments):[0-9a-f]{40}\s")
 if ($ecrImages.Count -ne 3 -or $eksManifests -match "josealmeidajr/") { throw "EKS overlay must run the three APIs from ECR at SHA tags" }
 if ([regex]::Matches($eksManifests, "(?m)^  replicas: 2\s*$").Count -ne 3) { throw "EKS overlay must run 2 replicas of each API" }
+
+$localSearchManifests = & "$root/eks/apply.ps1" -DryRun -Registry $registry -LocalSearch | Out-String
+if ($localSearchManifests -match "(?m)^  name: (rabbitmq\S*|aws-credentials)\s*$") { throw "-LocalSearch overlay still renders $($Matches[1])" }
+if ([regex]::Matches($localSearchManifests, "(?m)^  name: elasticsearch\s*$").Count -ne 2) { throw "-LocalSearch overlay must keep the Elasticsearch Deployment and Service" }
+if ($localSearchManifests -notmatch 'Search__Uri: "?http://elasticsearch:9200"?\s') { throw "-LocalSearch overlay must point catalog-config at the in-cluster Elasticsearch" }
 
 Write-Host "docker compose config (throwaway generated env file)"
 $envFile = Join-Path $root "check-env.tmp" # git-ignored (*.tmp)

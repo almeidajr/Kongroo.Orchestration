@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Elastic Cloud replaces the local Elasticsearch. apply.ps1 -LocalSearch leaves this component out (eks/README.md Recovery (d)).
+patches:
+  - target:
+      name: ^elasticsearch$
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Unused
+      metadata:
+        name: unused

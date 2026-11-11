@@ -175,8 +175,8 @@ Then rerun section 3.
 Check: `down.ps1` prints `safe to End Lab`, then `up.ps1` ends with the `Kong:` line. Continue at 1.4.
 
 **(d) The Elastic Cloud trial lapsed** (the console says the trial ended; smoke check 4 fails). Never start a second trial: run the day in
-degraded search mode, with Catalog searching the in-cluster Elasticsearch. The command arrives with ticket 18: `./eks/up.ps1 -LocalSearch`
-(after `./eks/down.ps1` if the cluster is up). Check: section 2 passes, search check included.
+degraded search mode, with Catalog searching the in-cluster Elasticsearch: `./eks/up.ps1 -LocalSearch` (after `./eks/down.ps1` if the
+cluster is up; it needs no `eks/cloud.env`). Check: section 2 passes, search check included.
 
 ## 6. Video day
 

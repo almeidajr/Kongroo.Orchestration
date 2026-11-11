@@ -15,6 +15,9 @@
 .PARAMETER Target
   Eks (eks/up.ps1): fresh values on every run into eks/.env, the Elastic Cloud user from the hand-filled eks/cloud.env in
   catalog-secret, Secrets applied to context kongroo-eks, no user-secrets. The local .env is never read or written.
+.PARAMETER LocalSearch
+  With -Target Eks, degraded search mode (eks/up.ps1 -LocalSearch): eks/cloud.env is not read, elasticsearch-secret is created and
+  catalog-secret gets no Search__Uri, so Catalog searches the in-cluster Elasticsearch.
 .PARAMETER SkipUserSecrets
   Leave the APIs' user-secrets alone (check.ps1).
 .PARAMETER SkipKubernetes
@@ -24,6 +27,7 @@ param(
     [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) ".env"),
     [ValidateSet("Local", "Eks")]
     [string]$Target = "Local",
+    [switch]$LocalSearch,
     [switch]$SkipUserSecrets,
     [switch]$SkipKubernetes
 )
@@ -81,12 +85,14 @@ function Read-EnvFile([string]$Path) {
 }
 
 $isEks = $Target -eq "Eks"
+if ($LocalSearch -and -not $isEks) { throw "-LocalSearch is for -Target Eks; the local target always uses the in-cluster Elasticsearch." }
+$usesElasticCloud = $isEks -and -not $LocalSearch
 if ($isEks) {
     if ($PSBoundParameters.ContainsKey("EnvFile")) { throw "-Target Eks always writes eks/.env; drop -EnvFile." }
     $eksFolder = Join-Path (Split-Path $PSScriptRoot -Parent) "eks"
     . "$eksFolder/common.ps1"
     $EnvFile = Join-Path $eksFolder ".env"
-    $cloud = Read-CloudEnv
+    if ($usesElasticCloud) { $cloud = Read-CloudEnv }
 }
 
 # $secrets holds the effective values either way, so later targets (k8s Secrets, user-secrets) build from it.
@@ -137,7 +143,7 @@ $apiSecrets = [ordered]@{
         RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
     }
 }
-if ($isEks) {
+if ($usesElasticCloud) {
     # catalog-secret comes after catalog-config in envFrom, so these override the local Elasticsearch URI.
     $apiSecrets.Catalog.Search__Uri = $cloud.SEARCH_URI
     $apiSecrets.Catalog.Search__Username = $cloud.SEARCH_USERNAME
@@ -176,8 +182,9 @@ $kubernetesSecrets = [ordered]@{
     "kong-secret"          = [ordered]@{ JWT_SIGNING_KEY = $secrets.JWT_SIGNING_KEY }
     "elasticsearch-secret" = [ordered]@{ ELASTIC_PASSWORD = $secrets.ELASTIC_PASSWORD }
 }
-# The EKS overlay runs neither RabbitMQ (SNS/SQS instead) nor a local Elasticsearch (Elastic Cloud instead).
-if ($isEks) { "rabbitmq-secret", "elasticsearch-secret" | ForEach-Object { $kubernetesSecrets.Remove($_) } }
+# The EKS overlay runs no RabbitMQ (SNS/SQS instead), and no local Elasticsearch unless -LocalSearch (Elastic Cloud instead).
+if ($isEks) { $kubernetesSecrets.Remove("rabbitmq-secret") }
+if ($usesElasticCloud) { $kubernetesSecrets.Remove("elasticsearch-secret") }
 # The EKS context is always named; the current context is never changed.
 $kubeContext = $isEks ? $kubeContext : (kubectl config current-context)
 $contextArguments = $isEks ? @("--context", $kubeContext) : @()

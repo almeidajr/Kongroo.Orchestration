@@ -6,10 +6,13 @@
   Print the rendered manifests instead of applying them; needs no cluster.
 .PARAMETER Registry
   ECR registry host; defaults to <account>.dkr.ecr.us-east-1.amazonaws.com of the current AWS credentials.
+.PARAMETER LocalSearch
+  Degraded search mode for a lapsed Elastic Cloud trial: keep the in-cluster Elasticsearch (eks/README.md Recovery (d)).
 #>
 param(
     [switch]$DryRun,
-    [string]$Registry
+    [string]$Registry,
+    [switch]$LocalSearch
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
@@ -33,7 +36,8 @@ $images = foreach ($name in "Identity", "Catalog", "Payments") {
 $renderDirectory = Join-Path $root "eks-render-$(New-Guid).tmp"
 New-Item -ItemType Directory $renderDirectory | Out-Null
 try {
-    Set-Content "$renderDirectory/kustomization.yaml" "resources:`n  - ../eks`nimages:`n$($images -join "`n")"
+    $components = $LocalSearch ? "" : "components:`n  - ../eks/cloud-search`n"
+    Set-Content "$renderDirectory/kustomization.yaml" "resources:`n  - ../eks`n$($components)images:`n$($images -join "`n")"
     if ($DryRun) { kubectl kustomize $renderDirectory } else { kubectl --context kongroo-eks apply -k $renderDirectory }
     if ($LASTEXITCODE -ne 0) { throw "kubectl failed on the EKS overlay" }
 }
