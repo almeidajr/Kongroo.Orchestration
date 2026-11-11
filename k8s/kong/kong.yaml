@@ -6,13 +6,13 @@ _transform: true
 consumers:
   - username: identity
     jwt_secrets:
-      # key must equal the token's `iss` claim; secret must equal Jwt__SigningKey of Identity/Catalog.
+      # key must equal the token's `iss` claim; secret must equal Identity's Jwt__SigningKey.
       # Kong 3.9 OSS accepts but does not dereference a {vault://env/...} reference in this field
-      # (verified 2026-09-10: "Invalid signature"), so the development key is inline. In Kubernetes
-      # this file is mounted from a Secret, not a ConfigMap.
+      # (verified 2026-09-10: "Invalid signature"), so Kong's start command sed-substitutes the
+      # hex JWT_SIGNING_KEY for the placeholder into a temp copy.
       - key: Kongroo.Identity.Api
         algorithm: HS256
-        secret: "Development.SigningKey.AtLeast32Characters!"
+        secret: "__JWT_SIGNING_KEY__"
 
 plugins:
   - name: prometheus

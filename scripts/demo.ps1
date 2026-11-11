@@ -7,14 +7,22 @@
   Kong proxy base URL. http://localhost:8000 (default) serves both compose and k8s; run one mode at a time.
 .PARAMETER AdminUsername
   Bootstrap admin username. Compose: developer (default). Kubernetes: admin
+.PARAMETER AdminPassword
+  Bootstrap admin password. Default: BOOTSTRAP_ADMIN_PASSWORD from the .env written by new-secrets.ps1.
 #>
 param(
     [string]$Gateway = "http://localhost:8000",
     [string]$AdminUsername = "developer",
-    [string]$AdminPassword = "Sup3rSecure!"
+    [string]$AdminPassword
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $AdminPassword) {
+    $envFile = Join-Path (Split-Path $PSScriptRoot -Parent) ".env"
+    if (-not (Test-Path $envFile)) { throw "Not found: $envFile. Run scripts/new-secrets.ps1 first." }
+    $AdminPassword = (Get-Content -Raw $envFile | ConvertFrom-StringData).BOOTSTRAP_ADMIN_PASSWORD
+}
 $suffix = Get-Date -Format "HHmmss"
 
 function Invoke-Api {

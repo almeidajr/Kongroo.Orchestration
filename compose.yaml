@@ -3,7 +3,7 @@ services:
     image: postgres:18.4
     environment:
       POSTGRES_USER: kongroo
-      POSTGRES_PASSWORD: development
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/new-secrets.ps1}
     ports:
       - "5432:5432"
     volumes:
@@ -20,7 +20,7 @@ services:
     image: rabbitmq:4.3-management
     environment:
       RABBITMQ_DEFAULT_USER: kongroo
-      RABBITMQ_DEFAULT_PASS: development
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?run scripts/new-secrets.ps1}
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -37,7 +37,7 @@ services:
     image: mongo:8.0
     environment:
       MONGO_INITDB_ROOT_USERNAME: kongroo
-      MONGO_INITDB_ROOT_PASSWORD: development
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?run scripts/new-secrets.ps1}
     ports:
       - "27017:27017"
     volumes:
@@ -69,18 +69,18 @@ services:
       - "5101:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Database: "Host=postgres;Database=kongroo_identity;Username=kongroo;Password=development"
+      ConnectionStrings__Database: ${IDENTITY_DATABASE_CONNECTION_STRING:?run scripts/new-secrets.ps1}
       Jwt__Issuer: "Kongroo.Identity.Api"
       Jwt__Audience: "Kongroo.Identity.Api"
-      Jwt__SigningKey: "Development.SigningKey.AtLeast32Characters!"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?run scripts/new-secrets.ps1}
       Jwt__AccessTokenLifetimeMinutes: "15"
       BootstrapAdmin__Username: "developer"
       BootstrapAdmin__Email: "developer@kongroo.dev"
-      BootstrapAdmin__Password: "Sup3rSecure!"
+      BootstrapAdmin__Password: ${BOOTSTRAP_ADMIN_PASSWORD:?run scripts/new-secrets.ps1}
       BootstrapAdmin__Name: "Developer"
       RabbitMq__Host: "rabbitmq"
       RabbitMq__User: "kongroo"
-      RabbitMq__Pass: "development"
+      RabbitMq__Pass: ${RABBITMQ_PASSWORD:?run scripts/new-secrets.ps1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,17 +96,17 @@ services:
       - "5102:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Database: "Host=postgres;Database=kongroo_catalog;Username=kongroo;Password=development"
+      ConnectionStrings__Database: ${CATALOG_DATABASE_CONNECTION_STRING:?run scripts/new-secrets.ps1}
       Jwt__Issuer: "Kongroo.Identity.Api"
       Jwt__Audience: "Kongroo.Identity.Api"
-      Jwt__SigningKey: "Development.SigningKey.AtLeast32Characters!"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?run scripts/new-secrets.ps1}
       Jwt__AccessTokenLifetimeMinutes: "15"
       RabbitMq__Host: "rabbitmq"
       RabbitMq__User: "kongroo"
-      RabbitMq__Pass: "development"
-      Mongo__ConnectionString: "mongodb://kongroo:development@mongodb:27017/kongroo_catalog?authSource=admin"
+      RabbitMq__Pass: ${RABBITMQ_PASSWORD:?run scripts/new-secrets.ps1}
+      Mongo__ConnectionString: ${MONGO_CONNECTION_STRING:?run scripts/new-secrets.ps1}
       Mongo__Database: "kongroo_catalog"
-      ConnectionStrings__Redis: "redis:6379"
+      ConnectionStrings__Redis: ${REDIS_CONNECTION_STRING:?run scripts/new-secrets.ps1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -126,14 +126,14 @@ services:
       - "5103:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Database: "Host=postgres;Database=kongroo_payments;Username=kongroo;Password=development"
+      ConnectionStrings__Database: ${PAYMENTS_DATABASE_CONNECTION_STRING:?run scripts/new-secrets.ps1}
       Jwt__Issuer: "Kongroo.Identity.Api"
       Jwt__Audience: "Kongroo.Identity.Api"
-      Jwt__SigningKey: "Development.SigningKey.AtLeast32Characters!"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?run scripts/new-secrets.ps1}
       Jwt__AccessTokenLifetimeMinutes: "15"
       RabbitMq__Host: "rabbitmq"
       RabbitMq__User: "kongroo"
-      RabbitMq__Pass: "development"
+      RabbitMq__Pass: ${RABBITMQ_PASSWORD:?run scripts/new-secrets.ps1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,9 +142,14 @@ services:
 
   kong:
     image: kong:3.9
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - sed "s/__JWT_SIGNING_KEY__/$$JWT_SIGNING_KEY/" /kong/declarative/kong.yaml > /tmp/kong.yaml
+        && exec /docker-entrypoint.sh kong docker-start
     environment:
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?run scripts/new-secrets.ps1}
       KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yaml
+      KONG_DECLARATIVE_CONFIG: /tmp/kong.yaml
       KONG_PROXY_LISTEN: 0.0.0.0:8000
       KONG_ADMIN_LISTEN: "off"
       KONG_STATUS_LISTEN: 0.0.0.0:8100
@@ -187,7 +192,7 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: development
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?run scripts/new-secrets.ps1}
     volumes:
       - ./k8s/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./k8s/grafana/dashboards:/var/lib/grafana/dashboards:ro
