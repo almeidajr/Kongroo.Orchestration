@@ -30,7 +30,7 @@ if ($LASTEXITCODE -ne 0) { throw "kustomize build failed" }
 Write-Host "docker compose config (throwaway generated env file)"
 $envFile = Join-Path $root "check-env.tmp" # git-ignored (*.tmp)
 try {
-    & "$PSScriptRoot/new-secrets.ps1" -EnvFile $envFile -SkipKubernetes 6>$null
+    & "$PSScriptRoot/new-secrets.ps1" -EnvFile $envFile -SkipUserSecrets -SkipKubernetes 6>$null
     docker compose -f "$root/compose.yaml" --env-file $envFile config --quiet
     if ($LASTEXITCODE -ne 0) { throw "compose.yaml failed to validate" }
 }

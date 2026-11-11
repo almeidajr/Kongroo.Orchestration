@@ -6,15 +6,19 @@
 .DESCRIPTION
   The env file is written only when it does not exist yet, so re-running the script never invalidates
   running databases or issued tokens. Delete the file (and the compose volumes) to start over.
-  The Secrets are applied idempotently into the kongroo namespace (created if missing), so a re-run
-  on a live cluster changes nothing.
+  The three APIs' user-secrets are set from the same values, pointed at localhost, so `dotnet run` on the
+  host reaches the compose datastores. The Secrets are applied idempotently into the kongroo namespace
+  (created if missing), so a re-run on a live cluster changes nothing.
 .PARAMETER EnvFile
   Env file to write. Default: .env at the Orchestration root.
+.PARAMETER SkipUserSecrets
+  Leave the APIs' user-secrets alone (check.ps1).
 .PARAMETER SkipKubernetes
-  Write or read the env file only; leave the cluster alone (compose-only hosts, check.ps1).
+  Leave the cluster alone (compose-only hosts, check.ps1).
 #>
 param(
     [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) ".env"),
+    [switch]$SkipUserSecrets,
     [switch]$SkipKubernetes
 )
 
@@ -71,18 +75,15 @@ else {
     $generated
 }
 
-if ($SkipKubernetes) { return }
-
-$namespace = "kongroo"
-$kubernetesSecrets = [ordered]@{
-    "identity-secret" = [ordered]@{
+$apiSecrets = [ordered]@{
+    Identity = [ordered]@{
         ConnectionStrings__Database = $secrets.IDENTITY_DATABASE_CONNECTION_STRING
         Jwt__SigningKey             = $secrets.JWT_SIGNING_KEY
         BootstrapAdmin__Password    = $secrets.BOOTSTRAP_ADMIN_PASSWORD
         RabbitMq__User              = "kongroo"
         RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
     }
-    "catalog-secret"  = [ordered]@{
+    Catalog  = [ordered]@{
         ConnectionStrings__Database = $secrets.CATALOG_DATABASE_CONNECTION_STRING
         Jwt__SigningKey             = $secrets.JWT_SIGNING_KEY
         RabbitMq__User              = "kongroo"
@@ -90,12 +91,44 @@ $kubernetesSecrets = [ordered]@{
         Mongo__ConnectionString     = $secrets.MONGO_CONNECTION_STRING
         ConnectionStrings__Redis    = $secrets.REDIS_CONNECTION_STRING
     }
-    "payments-secret" = [ordered]@{
+    Payments = [ordered]@{
         ConnectionStrings__Database = $secrets.PAYMENTS_DATABASE_CONNECTION_STRING
         Jwt__SigningKey             = $secrets.JWT_SIGNING_KEY
         RabbitMq__User              = "kongroo"
         RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
     }
+}
+
+foreach ($api in $apiSecrets.GetEnumerator()) {
+    $missing = @($api.Value.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object Key)
+    if ($missing) { throw "$EnvFile lacks a value for $($api.Key): $($missing -join ', ')" }
+}
+
+function ConvertTo-HostValue([string]$Value) {
+    # .env names the datastores by compose service; a host run reaches them on compose's published ports.
+    $Value -replace 'Host=postgres;', 'Host=localhost;' -replace '@mongodb:', '@localhost:' -replace '^redis:', 'localhost:'
+}
+
+if (-not $SkipUserSecrets) {
+    $workspace = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    foreach ($api in $apiSecrets.GetEnumerator()) {
+        $project = Join-Path $workspace "Kongroo.$($api.Key)/src/Kongroo.$($api.Key)"
+        $values = [ordered]@{}
+        foreach ($entry in $api.Value.GetEnumerator()) { $values[$entry.Key -replace '__', ':'] = ConvertTo-HostValue $entry.Value }
+        # Piped JSON keeps the values off the command line; output is shown only on failure.
+        $output = $values | ConvertTo-Json -Compress | dotnet user-secrets set --project $project 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "dotnet user-secrets set failed for $project`: $output Pass -SkipUserSecrets to skip host runs." }
+    }
+    Write-Host "User-secrets set for Identity, Catalog and Payments (dotnet run against compose)." -ForegroundColor Green
+}
+
+if ($SkipKubernetes) { return }
+
+$namespace = "kongroo"
+$kubernetesSecrets = [ordered]@{
+    "identity-secret" = $apiSecrets.Identity
+    "catalog-secret"  = $apiSecrets.Catalog
+    "payments-secret" = $apiSecrets.Payments
     "postgres-secret" = [ordered]@{ POSTGRES_PASSWORD = $secrets.POSTGRES_PASSWORD }
     "rabbitmq-secret" = [ordered]@{ RABBITMQ_DEFAULT_USER = "kongroo"; RABBITMQ_DEFAULT_PASS = $secrets.RABBITMQ_PASSWORD }
     "mongodb-secret"  = [ordered]@{ MONGO_INITDB_ROOT_USERNAME = "kongroo"; MONGO_INITDB_ROOT_PASSWORD = $secrets.MONGO_PASSWORD }
