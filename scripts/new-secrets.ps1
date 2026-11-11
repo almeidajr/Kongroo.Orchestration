@@ -6,11 +6,11 @@
 .DESCRIPTION
   The env file is written only when it does not exist yet, so re-running the script never invalidates
   running databases or issued tokens. Delete the file (and the compose volumes) to start over.
-  The three APIs' user-secrets are set from the same values, pointed at localhost, so `dotnet run` on the
-  host reaches the compose datastores. The Secrets are applied idempotently into the kongroo namespace
-  (created if missing), so a re-run on a live cluster changes nothing.
+  Unless -EnvFile is given, the three APIs' user-secrets are set from the same values, pointed at localhost,
+  so `dotnet run` on the host reaches the compose datastores. The Secrets are applied idempotently into the
+  kongroo namespace (created if missing), so a re-run on a live cluster changes nothing.
 .PARAMETER EnvFile
-  Env file to write. Default: .env at the Orchestration root.
+  Env file to write. Default: .env at the Orchestration root. Passing it leaves user-secrets alone.
 .PARAMETER SkipUserSecrets
   Leave the APIs' user-secrets alone (check.ps1).
 .PARAMETER SkipKubernetes
@@ -32,6 +32,11 @@ function New-RandomPassword([int]$Length = 32) {
 
 function New-HexKey([int]$Bytes = 32) {
     [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes($Bytes)).ToLowerInvariant()
+}
+
+function ConvertTo-HostValue([string]$Value) {
+    # .env names the datastores by compose service; a host run reaches them on compose's published ports.
+    $Value -replace 'Host=[^;]+;', 'Host=localhost;' -replace '@[^@:/]+:', '@localhost:' -replace '^[^:=;/@]+:(?=\d+$)', 'localhost:'
 }
 
 function New-LocalSecrets {
@@ -104,12 +109,7 @@ foreach ($api in $apiSecrets.GetEnumerator()) {
     if ($missing) { throw "$EnvFile lacks a value for $($api.Key): $($missing -join ', ')" }
 }
 
-function ConvertTo-HostValue([string]$Value) {
-    # .env names the datastores by compose service; a host run reaches them on compose's published ports.
-    $Value -replace 'Host=postgres;', 'Host=localhost;' -replace '@mongodb:', '@localhost:' -replace '^redis:', 'localhost:'
-}
-
-if (-not $SkipUserSecrets) {
+if (-not $SkipUserSecrets -and -not $PSBoundParameters.ContainsKey("EnvFile")) {
     $workspace = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     foreach ($api in $apiSecrets.GetEnumerator()) {
         $project = Join-Path $workspace "Kongroo.$($api.Key)/src/Kongroo.$($api.Key)"
