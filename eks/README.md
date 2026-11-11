@@ -13,7 +13,9 @@ Needs: `aws` CLI v2, `kubectl`, `gh` logged in with admin rights on the four ser
 ## Rules for every cloud day
 
 - **After any Start Lab press** (starting the session or extending the timer), paste the new "AWS Details" block (step 1.2), then run
-  `./eks/arm.ps1`. Do it every time, without checking whether the keys changed. Check: it prints `CI armed`.
+  `./eks/arm.ps1`. Do it every time, without checking whether the keys changed. Check: it prints `CI armed`. It also restarts the lab
+  clock in `eks/.env` (`up.ps1` starts it), which `smoke.ps1`, `seed-games.ps1` and `watch-release.ps1` print as their first line:
+  `Lab clock: <h:mm> since the last Start Lab; …`.
 - **Extend at the 3-hour mark, every time:** when the Lab timer shows about 1:00 left, press Start Lab, then follow the rule above. A
   session that expires with the cluster up keeps billing: the node group replaces the stopped nodes.
 - A script that stops with `refresh credentials` means the pasted keys are stale: Start Lab, step 1.2, rerun the script.

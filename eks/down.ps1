@@ -66,17 +66,7 @@ $deadline = (Get-Date).AddMinutes(10)
 while (($left = @(Get-PvcVolume) + @(Get-ClusterLoadBalancer)) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 15 }
 if ($left) { throw "Still present after 10 minutes: $($left -join ', '). Delete them in the EC2 console, then rerun down.ps1" }
 
-# EKS can refuse the cluster delete with 409 "update in progress" right after the stack removes its add-ons; a second delete resumes.
-foreach ($attempt in 1, 2) {
-    Write-Output "Deleting stack $clusterStack"
-    aws cloudformation delete-stack --region $region --stack-name $clusterStack
-    if ($LASTEXITCODE -ne 0) { throw "aws cloudformation delete-stack failed" }
-    aws cloudformation wait stack-delete-complete --region $region --stack-name $clusterStack
-    if ($LASTEXITCODE -eq 0) { break }
-    if ($attempt -eq 2) { throw "Stack $clusterStack did not reach DELETE_COMPLETE: read its events, remove what blocks it, rerun down.ps1" }
-    Write-Output "Stack $clusterStack is DELETE_FAILED; retrying once in 60 s"
-    Start-Sleep -Seconds 60
-}
+Remove-ClusterStack -StackName $clusterStack
 
 $leftovers = [ordered]@{
     "PVC volumes"                   = Get-PvcVolume

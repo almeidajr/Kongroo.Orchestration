@@ -30,6 +30,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path (Split-Path $PSScriptRoot -Parent) "eks/common.ps1")
+Write-LabClock
 
 if (-not $AdminPassword) {
     $envFile = Join-Path (Split-Path $PSScriptRoot -Parent) ".env"

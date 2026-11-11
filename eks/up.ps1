@@ -15,6 +15,7 @@ param(
     [switch]$LocalSearch
 )
 $ErrorActionPreference = "Stop"
+$upStartedAt = Get-Date
 $root = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot/common.ps1"
 
@@ -52,25 +53,10 @@ if ($usesElasticCloud) {
 }
 
 # Armed before any dispatch: the dispatched run pushes to ECR and deploys only when ECR_REGISTRY and the keys are set.
-& "$PSScriptRoot/arm.ps1"
+# up.ps1 runs right after Start Lab, so its own start is the lab clock's best estimate.
+& "$PSScriptRoot/arm.ps1" -LabStartedAt $upStartedAt
 
-# Only Notifications' CI deploys the Lambda stack, and it must land before the APIs start: the stack creates the two topics it
-# subscribes to, and CloudFormation refuses topics that already exist (MassTransit creates them on an API's first start).
-$output = aws cloudformation describe-stacks --region $region --stack-name kongroo-notifications 2>&1
-if ($LASTEXITCODE -eq 0) { Write-Output "Stack kongroo-notifications exists" }
-elseif ("$output" -notmatch "does not exist") { throw "aws cloudformation describe-stacks failed for kongroo-notifications: $output" }
-else {
-    $account = aws sts get-caller-identity --query Account --output text
-    foreach ($topic in "kongroo-user-created", "kongroo-payment-processed") {
-        aws sns delete-topic --region $region --topic-arn "arn:aws:sns:${region}:${account}:$topic"
-        if ($LASTEXITCODE -ne 0) { throw "aws sns delete-topic failed for $topic" }
-    }
-    $runUrl = gh workflow run ci-cd.yml --repo "almeidajr/Kongroo.Notifications" --ref master
-    if ($LASTEXITCODE -ne 0) { throw "gh workflow run failed for Kongroo.Notifications" }
-    Write-Output "Stack kongroo-notifications is missing: deploying it through Kongroo.Notifications's CI/CD ($runUrl)"
-    gh run watch ($runUrl -split "/")[-1] --repo "almeidajr/Kongroo.Notifications" --exit-status --interval 20 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Kongroo.Notifications's CI/CD failed: $runUrl" }
-}
+Install-NotificationsStack
 
 & "$PSScriptRoot/apply.ps1" -LocalSearch:$LocalSearch
 

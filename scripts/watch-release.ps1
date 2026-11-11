@@ -21,6 +21,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $reloginAfter = [TimeSpan]::FromMinutes(10)
+. (Join-Path (Split-Path $PSScriptRoot -Parent) "eks/common.ps1")
+Write-LabClock
 
 function Get-Token {
     $body = @{ username = $Username; password = $Password } | ConvertTo-Json -Compress

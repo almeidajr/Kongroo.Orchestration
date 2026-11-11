@@ -8,11 +8,16 @@
   Secret values go to gh through stdin and are never printed.
 .PARAMETER Disarm
   Delete the same secrets and variables instead (down.ps1), so pushes to master stop at Docker Hub.
+.PARAMETER LabStartedAt
+  When the Lab timer was last restarted (default: now), recorded in eks/.env for the lab clock that smoke.ps1, seed-games.ps1 and
+  watch-release.ps1 print.
 #>
 param(
-    [switch]$Disarm
+    [switch]$Disarm,
+    [datetime]$LabStartedAt = (Get-Date)
 )
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/common.ps1"
 
 $account = aws sts get-caller-identity --query Account --output text
 if ($LASTEXITCODE -ne 0) { throw "aws sts get-caller-identity failed: refresh credentials" }
@@ -69,4 +74,5 @@ foreach ($repository in $repositories.GetEnumerator()) {
         Assert-Gh "set variable $($variable.Key) on $($repository.Key)"
     }
 }
+Set-LabClock -StartedAt $LabStartedAt
 Write-Output "CI armed: session keys on the four service repos, ECR_REGISTRY on the APIs, SAM_DEPLOY=true on Notifications."

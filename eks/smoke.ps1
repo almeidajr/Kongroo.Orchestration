@@ -11,6 +11,7 @@
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot/common.ps1"
+Write-LabClock
 
 function Invoke-Check([string]$Name, [scriptblock]$Check) {
     Write-Output "`n== $Name"
