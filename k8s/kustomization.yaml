@@ -7,19 +7,16 @@ resources:
   - namespace.yaml
   - aws-credentials.secret.yaml
   - postgres/configmap.yaml
-  - postgres/secret.yaml
   - postgres/pvc.yaml
   - postgres/deployment.yaml
   - postgres/service.yaml
   - rabbitmq/configmap.yaml
-  - rabbitmq/secret.yaml
   - rabbitmq/pvc.yaml
   - rabbitmq/deployment.yaml
   - rabbitmq/service.yaml
   - kong/deployment.yaml
   - kong/service.yaml
   - kong/status-service.yaml
-  - mongodb/secret.yaml
   - mongodb/pvc.yaml
   - mongodb/deployment.yaml
   - mongodb/service.yaml
@@ -27,19 +24,16 @@ resources:
   - redis/service.yaml
   - prometheus/deployment.yaml
   - prometheus/service.yaml
-  - grafana/secret.yaml
   - grafana/deployment.yaml
   - grafana/service.yaml
   - identity
   - catalog
   - payments
 
-secretGenerator:
+configMapGenerator:
   - name: kong-declarative
     files:
       - kong/kong.yaml
-
-configMapGenerator:
   - name: prometheus-config
     files:
       - prometheus/prometheus.yml

@@ -22,16 +22,26 @@ spec:
       containers:
         - name: kong
           image: kong:3.9
+          # Same start as compose: substitute the JWT key into a temp copy, then exec the stock entrypoint.
+          command: ["/bin/sh", "-c"]
+          args:
+            - sed "s/__JWT_SIGNING_KEY__/$JWT_SIGNING_KEY/" /kong/declarative/kong.yaml > /tmp/kong.yaml
+              && exec /docker-entrypoint.sh kong docker-start
           ports:
             - name: proxy
               containerPort: 8000
             - name: status
               containerPort: 8100
           env:
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: JWT_SIGNING_KEY
             - name: KONG_DATABASE
               value: "off"
             - name: KONG_DECLARATIVE_CONFIG
-              value: /kong/declarative/kong.yaml
+              value: /tmp/kong.yaml
             - name: KONG_PREFIX
               value: /kong_prefix
             - name: KONG_PROXY_LISTEN
@@ -85,8 +95,8 @@ spec:
               mountPath: /tmp
       volumes:
         - name: declarative
-          secret:
-            secretName: kong-declarative
+          configMap:
+            name: kong-declarative
         - name: prefix
           emptyDir: {}
         - name: tmp

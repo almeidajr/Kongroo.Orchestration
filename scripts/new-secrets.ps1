@@ -1,15 +1,21 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  Generate every local credential into a git-ignored env file that docker compose reads on its own.
+  Generate every local credential into a git-ignored env file that docker compose reads on its own,
+  and create the matching Kubernetes Secrets in the current kube context.
 .DESCRIPTION
   The env file is written only when it does not exist yet, so re-running the script never invalidates
   running databases or issued tokens. Delete the file (and the compose volumes) to start over.
+  The Secrets are applied idempotently into the kongroo namespace (created if missing), so a re-run
+  on a live cluster changes nothing.
 .PARAMETER EnvFile
   Env file to write. Default: .env at the Orchestration root.
+.PARAMETER SkipKubernetes
+  Write or read the env file only; leave the cluster alone (compose-only hosts, check.ps1).
 #>
 param(
-    [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) ".env")
+    [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) ".env"),
+    [switch]$SkipKubernetes
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,3 +70,51 @@ else {
     Write-Host "Wrote $EnvFile." -ForegroundColor Green
     $generated
 }
+
+if ($SkipKubernetes) { return }
+
+$namespace = "kongroo"
+$kubernetesSecrets = [ordered]@{
+    "identity-secret" = [ordered]@{
+        ConnectionStrings__Database = $secrets.IDENTITY_DATABASE_CONNECTION_STRING
+        Jwt__SigningKey             = $secrets.JWT_SIGNING_KEY
+        BootstrapAdmin__Password    = $secrets.BOOTSTRAP_ADMIN_PASSWORD
+        RabbitMq__User              = "kongroo"
+        RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
+    }
+    "catalog-secret"  = [ordered]@{
+        ConnectionStrings__Database = $secrets.CATALOG_DATABASE_CONNECTION_STRING
+        Jwt__SigningKey             = $secrets.JWT_SIGNING_KEY
+        RabbitMq__User              = "kongroo"
+        RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
+        Mongo__ConnectionString     = $secrets.MONGO_CONNECTION_STRING
+        ConnectionStrings__Redis    = $secrets.REDIS_CONNECTION_STRING
+    }
+    "payments-secret" = [ordered]@{
+        ConnectionStrings__Database = $secrets.PAYMENTS_DATABASE_CONNECTION_STRING
+        Jwt__SigningKey             = $secrets.JWT_SIGNING_KEY
+        RabbitMq__User              = "kongroo"
+        RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
+    }
+    "postgres-secret" = [ordered]@{ POSTGRES_PASSWORD = $secrets.POSTGRES_PASSWORD }
+    "rabbitmq-secret" = [ordered]@{ RABBITMQ_DEFAULT_USER = "kongroo"; RABBITMQ_DEFAULT_PASS = $secrets.RABBITMQ_PASSWORD }
+    "mongodb-secret"  = [ordered]@{ MONGO_INITDB_ROOT_USERNAME = "kongroo"; MONGO_INITDB_ROOT_PASSWORD = $secrets.MONGO_PASSWORD }
+    "grafana-secret"  = [ordered]@{ GF_SECURITY_ADMIN_PASSWORD = $secrets.GRAFANA_ADMIN_PASSWORD }
+    "kong-secret"     = [ordered]@{ JWT_SIGNING_KEY = $secrets.JWT_SIGNING_KEY }
+}
+
+function Invoke-KubectlApply([string[]]$CreateArguments) {
+    # create --dry-run | apply: creates or updates, and reports "unchanged" when nothing differs.
+    kubectl create @CreateArguments --dry-run=client -o yaml | kubectl apply -f -
+    if ($LASTEXITCODE -ne 0) { throw "kubectl apply failed for $($CreateArguments[0..2] -join ' ') (current context: $(kubectl config current-context)). Pass -SkipKubernetes for compose only." }
+}
+
+# Only when missing: re-applying would fight kubectl apply -k over the namespace's last-applied annotation.
+if (-not (kubectl get namespace $namespace --ignore-not-found -o name)) { Invoke-KubectlApply @("namespace", $namespace) }
+foreach ($secret in $kubernetesSecrets.GetEnumerator()) {
+    $missing = @($secret.Value.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object Key)
+    if ($missing) { throw "$EnvFile lacks a value for $($secret.Key): $($missing -join ', ')" }
+    $literals = $secret.Value.GetEnumerator() | ForEach-Object { "--from-literal=$($_.Key)=$($_.Value)" }
+    Invoke-KubectlApply (@("secret", "generic", $secret.Key, "--namespace", $namespace) + $literals)
+}
+Write-Host "Kubernetes Secrets applied to namespace $namespace in context $(kubectl config current-context)." -ForegroundColor Green

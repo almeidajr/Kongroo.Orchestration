@@ -1,11 +1,17 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-  Validate the orchestration repo: Kong declarative config parses, kustomize builds,
+  Validate the orchestration repo: no secret.yaml anywhere, Kong declarative config parses, kustomize builds,
   the CloudFormation templates lint (cfn-lint on PATH), and the synced service manifests have no drift.
 #>
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
+
+Write-Host "no secret.yaml in this repo or the service repos' k8s/ (Secrets come from new-secrets.ps1)"
+$serviceManifests = "Kongroo.Identity", "Kongroo.Catalog", "Kongroo.Payments" |
+    ForEach-Object { Join-Path (Split-Path $root -Parent) $_ "k8s" } | Where-Object { Test-Path $_ }
+$secretFiles = @(Get-ChildItem -Path (@($root) + $serviceManifests) -Recurse -File -Filter "secret.yaml")
+if ($secretFiles) { throw "Committed Secret manifests are not allowed:`n$($secretFiles.FullName -join "`n")" }
 
 Write-Host "kong config parse k8s/kong/kong.yaml (dummy hex key substituted)"
 if (-not (Select-String -Path "$root/k8s/kong/kong.yaml" -Pattern "__JWT_SIGNING_KEY__" -SimpleMatch -Quiet)) {
@@ -24,7 +30,7 @@ if ($LASTEXITCODE -ne 0) { throw "kustomize build failed" }
 Write-Host "docker compose config (throwaway generated env file)"
 $envFile = Join-Path $root "check-env.tmp" # git-ignored (*.tmp)
 try {
-    & "$PSScriptRoot/new-secrets.ps1" -EnvFile $envFile 6>$null
+    & "$PSScriptRoot/new-secrets.ps1" -EnvFile $envFile -SkipKubernetes 6>$null
     docker compose -f "$root/compose.yaml" --env-file $envFile config --quiet
     if ($LASTEXITCODE -ne 0) { throw "compose.yaml failed to validate" }
 }

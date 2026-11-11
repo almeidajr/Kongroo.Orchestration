@@ -21,7 +21,7 @@ $services = @(
     @{ Dir = "catalog"; Repo = "Kongroo.Catalog" },
     @{ Dir = "payments"; Repo = "Kongroo.Payments" }
 )
-$copyFiles = @("configmap.yaml", "secret.yaml", "service.yaml", "deployment.yaml")
+$copyFiles = @("configmap.yaml", "service.yaml", "deployment.yaml")
 
 $reposBase = (Resolve-Path (Join-Path $PSScriptRoot $ReposRoot)).Path
 $k8sRoot = Join-Path $PSScriptRoot "k8s"
