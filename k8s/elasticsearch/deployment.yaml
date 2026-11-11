@@ -42,7 +42,7 @@ spec:
               memory: 1Gi
           readinessProbe:
             exec:
-              command: ["sh", "-c", 'curl -fs -u "elastic:$ELASTIC_PASSWORD" http://localhost:9200/_cluster/health']
+              command: ["sh", "-c", 'printf ''user = "elastic:%s"\n'' "$ELASTIC_PASSWORD" | curl -fs -K - http://localhost:9200/_cluster/health']
             initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 5
