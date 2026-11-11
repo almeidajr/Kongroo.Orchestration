@@ -12,6 +12,9 @@
   kongroo namespace (created if missing), so a re-run on a live cluster changes nothing.
 .PARAMETER EnvFile
   Env file to write. Default: .env at the Orchestration root. Passing it leaves user-secrets alone.
+.PARAMETER Target
+  Eks (eks/up.ps1): fresh values on every run into eks/.env, the Elastic Cloud user from the hand-filled eks/cloud.env in
+  catalog-secret, Secrets applied to context kongroo-eks, no user-secrets. The local .env is never read or written.
 .PARAMETER SkipUserSecrets
   Leave the APIs' user-secrets alone (check.ps1).
 .PARAMETER SkipKubernetes
@@ -19,6 +22,8 @@
 #>
 param(
     [string]$EnvFile = (Join-Path (Split-Path $PSScriptRoot -Parent) ".env"),
+    [ValidateSet("Local", "Eks")]
+    [string]$Target = "Local",
     [switch]$SkipUserSecrets,
     [switch]$SkipKubernetes
 )
@@ -75,8 +80,23 @@ function Read-EnvFile([string]$Path) {
     ConvertFrom-StringData "$(Get-Content -Raw $Path)"
 }
 
+$isEks = $Target -eq "Eks"
+if ($isEks) {
+    if ($PSBoundParameters.ContainsKey("EnvFile")) { throw "-Target Eks always writes eks/.env; drop -EnvFile." }
+    $eksFolder = Join-Path (Split-Path $PSScriptRoot -Parent) "eks"
+    $EnvFile = Join-Path $eksFolder ".env"
+    $cloudEnvFile = Join-Path $eksFolder "cloud.env"
+    if (-not (Test-Path $cloudEnvFile)) {
+        throw "$cloudEnvFile not found: fill it by hand with SEARCH_URI, SEARCH_USERNAME and SEARCH_PASSWORD of the Elastic Cloud kongroo-catalog user."
+    }
+    $cloud = Read-EnvFile $cloudEnvFile
+    $missing = @("SEARCH_URI", "SEARCH_USERNAME", "SEARCH_PASSWORD" | Where-Object { -not $cloud[$_] })
+    if ($missing) { throw "$cloudEnvFile lacks a value for $($missing -join ', ')" }
+}
+
 # $secrets holds the effective values either way, so later targets (k8s Secrets, user-secrets) build from it.
-$secrets = if (Test-Path $EnvFile) {
+# EKS gets fresh values every cloud day, so cloud and local never share a credential.
+$secrets = if (-not $isEks -and (Test-Path $EnvFile)) {
     $existing = Read-EnvFile $EnvFile
     $missing = (New-LocalSecrets $existing).GetEnumerator() | Where-Object { -not $existing.ContainsKey($_.Key) }
     if ($missing) {
@@ -122,13 +142,19 @@ $apiSecrets = [ordered]@{
         RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
     }
 }
+if ($isEks) {
+    # catalog-secret comes after catalog-config in envFrom, so these override the local Elasticsearch URI.
+    $apiSecrets.Catalog.Search__Uri = $cloud.SEARCH_URI
+    $apiSecrets.Catalog.Search__Username = $cloud.SEARCH_USERNAME
+    $apiSecrets.Catalog.Search__Password = $cloud.SEARCH_PASSWORD
+}
 
 foreach ($api in $apiSecrets.GetEnumerator()) {
     $missing = @($api.Value.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object Key)
     if ($missing) { throw "$EnvFile lacks a value for $($api.Key): $($missing -join ', ')" }
 }
 
-if (-not $SkipUserSecrets -and -not $PSBoundParameters.ContainsKey("EnvFile")) {
+if (-not $SkipUserSecrets -and -not $isEks -and -not $PSBoundParameters.ContainsKey("EnvFile")) {
     $workspace = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     foreach ($api in $apiSecrets.GetEnumerator()) {
         $project = Join-Path $workspace "Kongroo.$($api.Key)/src/Kongroo.$($api.Key)"
@@ -155,19 +181,24 @@ $kubernetesSecrets = [ordered]@{
     "kong-secret"          = [ordered]@{ JWT_SIGNING_KEY = $secrets.JWT_SIGNING_KEY }
     "elasticsearch-secret" = [ordered]@{ ELASTIC_PASSWORD = $secrets.ELASTIC_PASSWORD }
 }
+# The EKS overlay runs neither RabbitMQ (SNS/SQS instead) nor a local Elasticsearch (Elastic Cloud instead).
+if ($isEks) { "rabbitmq-secret", "elasticsearch-secret" | ForEach-Object { $kubernetesSecrets.Remove($_) } }
+# The EKS context is always named; the current context is never changed.
+$kubeContext = $isEks ? "kongroo-eks" : (kubectl config current-context)
+$contextArguments = $isEks ? @("--context", $kubeContext) : @()
 
 function Invoke-KubectlApply([string[]]$CreateArguments) {
     # create --dry-run | apply: creates or updates, and reports "unchanged" when nothing differs.
-    kubectl create @CreateArguments --dry-run=client -o yaml | kubectl apply -f -
-    if ($LASTEXITCODE -ne 0) { throw "kubectl apply failed for $($CreateArguments[0..2] -join ' ') (current context: $(kubectl config current-context)). Pass -SkipKubernetes for compose only." }
+    kubectl @contextArguments create @CreateArguments --dry-run=client -o yaml | kubectl @contextArguments apply -f -
+    if ($LASTEXITCODE -ne 0) { throw "kubectl apply failed for $($CreateArguments[0..2] -join ' ') (context: $kubeContext). Pass -SkipKubernetes for compose only." }
 }
 
 # Only when missing: re-applying would fight kubectl apply -k over the namespace's last-applied annotation.
-if (-not (kubectl get namespace $namespace --ignore-not-found -o name)) { Invoke-KubectlApply @("namespace", $namespace) }
+if (-not (kubectl @contextArguments get namespace $namespace --ignore-not-found -o name)) { Invoke-KubectlApply @("namespace", $namespace) }
 foreach ($secret in $kubernetesSecrets.GetEnumerator()) {
     $missing = @($secret.Value.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object Key)
     if ($missing) { throw "$EnvFile lacks a value for $($secret.Key): $($missing -join ', ')" }
     $literals = $secret.Value.GetEnumerator() | ForEach-Object { "--from-literal=$($_.Key)=$($_.Value)" }
     Invoke-KubectlApply (@("secret", "generic", $secret.Key, "--namespace", $namespace) + $literals)
 }
-Write-Host "Kubernetes Secrets applied to namespace $namespace in context $(kubectl config current-context)." -ForegroundColor Green
+Write-Host "Kubernetes Secrets applied to namespace $namespace in context $kubeContext." -ForegroundColor Green
