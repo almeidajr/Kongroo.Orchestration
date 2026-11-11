@@ -13,3 +13,5 @@ data:
   Messaging__Transport: "AmazonSqs"
   Aws__Region: "us-east-1"
   Mongo__Database: "kongroo_catalog"
+  Search__Uri: "http://elasticsearch:9200"
+  Search__Username: "elastic"

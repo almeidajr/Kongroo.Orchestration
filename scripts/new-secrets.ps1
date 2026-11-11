@@ -5,7 +5,8 @@
   and create the matching Kubernetes Secrets in the current kube context.
 .DESCRIPTION
   The env file is written only when it does not exist yet, so re-running the script never invalidates
-  running databases or issued tokens. Delete the file (and the compose volumes) to start over.
+  running databases or issued tokens; keys added since it was written are appended, existing ones never change.
+  Delete the file (and the compose volumes) to start over.
   Unless -EnvFile is given, the three APIs' user-secrets are set from the same values, pointed at localhost,
   so `dotnet run` on the host reaches the compose datastores. The Secrets are applied idempotently into the
   kongroo namespace (created if missing), so a re-run on a live cluster changes nothing.
@@ -39,14 +40,16 @@ function ConvertTo-HostValue([string]$Value) {
     $Value -replace 'Host=[^;]+;', 'Host=localhost;' -replace '@[^@:/]+:', '@localhost:' -replace '^[^:=;/@]+:(?=\d+$)', 'localhost:'
 }
 
-function New-LocalSecrets {
-    $postgresPassword = New-RandomPassword
-    $mongoPassword = New-RandomPassword
+function New-LocalSecrets([hashtable]$Existing = @{}) {
+    # Connection strings derive from the existing passwords, so keys appended to an older env file still match it.
+    $postgresPassword = $Existing.POSTGRES_PASSWORD ?? (New-RandomPassword)
+    $mongoPassword = $Existing.MONGO_PASSWORD ?? (New-RandomPassword)
     [ordered]@{
         POSTGRES_PASSWORD                   = $postgresPassword
         RABBITMQ_PASSWORD                   = New-RandomPassword
         MONGO_PASSWORD                      = $mongoPassword
         GRAFANA_ADMIN_PASSWORD              = New-RandomPassword
+        ELASTIC_PASSWORD                    = New-RandomPassword
         JWT_SIGNING_KEY                     = New-HexKey
         # Identity requires a letter, a digit and a special character.
         BOOTSTRAP_ADMIN_PASSWORD            = "$(New-RandomPassword)-1"
@@ -70,8 +73,18 @@ function Read-EnvFile([string]$Path) {
 
 # $secrets holds the effective values either way, so later targets (k8s Secrets, user-secrets) build from it.
 $secrets = if (Test-Path $EnvFile) {
-    Write-Host "$EnvFile already exists; left untouched."
-    Read-EnvFile $EnvFile
+    $existing = Read-EnvFile $EnvFile
+    $missing = (New-LocalSecrets $existing).GetEnumerator() | Where-Object { -not $existing.ContainsKey($_.Key) }
+    if ($missing) {
+        $separator = (Get-Content -Raw $EnvFile).EndsWith("`n") ? "" : "`n"
+        [IO.File]::AppendAllText($EnvFile, $separator + (($missing | ForEach-Object { "$($_.Key)=$($_.Value)`n" }) -join ""))
+        Write-Host "$EnvFile existed; appended $(@($missing.Key) -join ', ')." -ForegroundColor Green
+        Read-EnvFile $EnvFile
+    }
+    else {
+        Write-Host "$EnvFile already exists; left untouched."
+        $existing
+    }
 }
 else {
     $generated = New-LocalSecrets
@@ -95,6 +108,7 @@ $apiSecrets = [ordered]@{
         RabbitMq__Pass              = $secrets.RABBITMQ_PASSWORD
         Mongo__ConnectionString     = $secrets.MONGO_CONNECTION_STRING
         ConnectionStrings__Redis    = $secrets.REDIS_CONNECTION_STRING
+        Search__Password            = $secrets.ELASTIC_PASSWORD
     }
     Payments = [ordered]@{
         ConnectionStrings__Database = $secrets.PAYMENTS_DATABASE_CONNECTION_STRING
@@ -126,14 +140,15 @@ if ($SkipKubernetes) { return }
 
 $namespace = "kongroo"
 $kubernetesSecrets = [ordered]@{
-    "identity-secret" = $apiSecrets.Identity
-    "catalog-secret"  = $apiSecrets.Catalog
-    "payments-secret" = $apiSecrets.Payments
-    "postgres-secret" = [ordered]@{ POSTGRES_PASSWORD = $secrets.POSTGRES_PASSWORD }
-    "rabbitmq-secret" = [ordered]@{ RABBITMQ_DEFAULT_USER = "kongroo"; RABBITMQ_DEFAULT_PASS = $secrets.RABBITMQ_PASSWORD }
-    "mongodb-secret"  = [ordered]@{ MONGO_INITDB_ROOT_USERNAME = "kongroo"; MONGO_INITDB_ROOT_PASSWORD = $secrets.MONGO_PASSWORD }
-    "grafana-secret"  = [ordered]@{ GF_SECURITY_ADMIN_PASSWORD = $secrets.GRAFANA_ADMIN_PASSWORD }
-    "kong-secret"     = [ordered]@{ JWT_SIGNING_KEY = $secrets.JWT_SIGNING_KEY }
+    "identity-secret"      = $apiSecrets.Identity
+    "catalog-secret"       = $apiSecrets.Catalog
+    "payments-secret"      = $apiSecrets.Payments
+    "postgres-secret"      = [ordered]@{ POSTGRES_PASSWORD = $secrets.POSTGRES_PASSWORD }
+    "rabbitmq-secret"      = [ordered]@{ RABBITMQ_DEFAULT_USER = "kongroo"; RABBITMQ_DEFAULT_PASS = $secrets.RABBITMQ_PASSWORD }
+    "mongodb-secret"       = [ordered]@{ MONGO_INITDB_ROOT_USERNAME = "kongroo"; MONGO_INITDB_ROOT_PASSWORD = $secrets.MONGO_PASSWORD }
+    "grafana-secret"       = [ordered]@{ GF_SECURITY_ADMIN_PASSWORD = $secrets.GRAFANA_ADMIN_PASSWORD }
+    "kong-secret"          = [ordered]@{ JWT_SIGNING_KEY = $secrets.JWT_SIGNING_KEY }
+    "elasticsearch-secret" = [ordered]@{ ELASTIC_PASSWORD = $secrets.ELASTIC_PASSWORD }
 }
 
 function Invoke-KubectlApply([string[]]$CreateArguments) {

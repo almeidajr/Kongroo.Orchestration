@@ -22,6 +22,8 @@ resources:
   - mongodb/service.yaml
   - redis/deployment.yaml
   - redis/service.yaml
+  - elasticsearch/deployment.yaml
+  - elasticsearch/service.yaml
   - prometheus/deployment.yaml
   - prometheus/service.yaml
   - grafana/deployment.yaml
