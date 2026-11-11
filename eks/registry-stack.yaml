@@ -1,0 +1,18 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: FIAP Cloud Games image registry. Stays up between cloud days so images survive cluster teardown.
+
+Resources:
+  IdentityRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: kongroo-identity
+
+  CatalogRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: kongroo-catalog
+
+  PaymentsRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: kongroo-payments

@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  FIAP Cloud Games EKS cluster, created and deleted each cloud day. Runs entirely on the Learner Lab's
+  LabRole (workspace ADR 0001), so it creates no IAM role or policy.
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: kongroo
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.0.0.0/18
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: 10.0.64.0/18
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  Cluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: kongroo
+      Version: "1.37"
+      RoleArn: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/LabRole
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref PublicSubnetA
+          - !Ref PublicSubnetB
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: false
+      # The creator (voclabs) gets the only admin entry; the node group adds LabRole's EC2_LINUX entry itself.
+      AccessConfig:
+        AuthenticationMode: API
+        BootstrapClusterCreatorAdminPermissions: true
+
+  NodeLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        # Hop limit 2 lets pods reach the node's LabRole credentials through IMDSv2.
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          HttpPutResponseHopLimit: 2
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn:
+      - VpcCniAddon
+      - KubeProxyAddon
+    Properties:
+      ClusterName: !Ref Cluster
+      NodeRole: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/LabRole
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      AmiType: AL2023_x86_64_STANDARD
+      InstanceTypes:
+        - t3.medium
+      ScalingConfig:
+        MinSize: 0
+        DesiredSize: 2
+        MaxSize: 3
+      LaunchTemplate:
+        Id: !Ref NodeLaunchTemplate
+        Version: !GetAtt NodeLaunchTemplate.LatestVersionNumber
+
+  VpcCniAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref Cluster
+      AddonName: vpc-cni
+      ResolveConflicts: OVERWRITE
+
+  KubeProxyAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref Cluster
+      AddonName: kube-proxy
+      ResolveConflicts: OVERWRITE
+
+  # coredns and the EBS CSI driver stay DEGRADED until a node joins, so they wait for the node group.
+  CoreDnsAddon:
+    Type: AWS::EKS::Addon
+    DependsOn: NodeGroup
+    Properties:
+      ClusterName: !Ref Cluster
+      AddonName: coredns
+      ResolveConflicts: OVERWRITE
+
+  EbsCsiDriverAddon:
+    Type: AWS::EKS::Addon
+    DependsOn: NodeGroup
+    Properties:
+      ClusterName: !Ref Cluster
+      AddonName: aws-ebs-csi-driver
+      ResolveConflicts: OVERWRITE

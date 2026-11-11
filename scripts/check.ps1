@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Validate the orchestration repo: Kong declarative config parses, kustomize builds,
-  and the synced service manifests have no drift.
+  the CloudFormation templates lint (cfn-lint on PATH), and the synced service manifests have no drift.
 #>
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
@@ -31,6 +31,10 @@ try {
 finally {
     Remove-Item $envFile -ErrorAction SilentlyContinue
 }
+
+Write-Host "cfn-lint eks/registry-stack.yaml eks/cluster-stack.yaml (with eks/rules)"
+cfn-lint --append-rules "$root/eks/rules" -- "$root/eks/registry-stack.yaml" "$root/eks/cluster-stack.yaml"
+if ($LASTEXITCODE -ne 0) { throw "cfn-lint failed on the eks templates" }
 
 Write-Host "sync.ps1 -Check"
 & "$root/sync.ps1" -Check
