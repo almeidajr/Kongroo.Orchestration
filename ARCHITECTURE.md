@@ -216,8 +216,9 @@ flowchart LR
 Kong Gateway 3.9 OSS, DB-less, one declarative file (`Kongroo.Orchestration/k8s/kong/kong.yaml`).
 Routes strip the prefix and proxy to the ClusterIP Services on port 8080. The `jwt` plugin holds one
 consumer (`identity`) whose credential key is the issuer `Kongroo.Identity.Api` and whose secret is the
-shared HS256 development signing key (inline; Kong 3.9 OSS does not dereference vault references in that
-field, so Kubernetes mounts the file from a Secret). Register and login are the
+shared HS256 signing key. Kong 3.9 OSS does not dereference vault references in that field, so the
+committed file holds the placeholder `__JWT_SIGNING_KEY__` and Kong's start command substitutes
+`JWT_SIGNING_KEY` (from `.env` or `kong-secret`) into a temporary copy. Register and login are the
 only anonymous routes; all others return Kong's 401 before reaching a service. The `prometheus` plugin
 exposes edge metrics on the status port 8100.
 

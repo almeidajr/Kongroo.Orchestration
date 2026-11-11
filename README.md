@@ -44,7 +44,7 @@ at a time.
 
 | Mode | What runs | Notifications |
 | --- | --- | --- |
-| **Docker Compose** (`docker compose up --build`) | Kong, 3 APIs, Postgres, RabbitMQ, MongoDB, Redis, Prometheus, Grafana | not fired (broker is RabbitMQ, the Lambda lives in AWS) |
+| **Docker Compose** (`docker compose up --build`) | Kong, 3 APIs, Postgres, RabbitMQ, MongoDB, Redis, Elasticsearch, Prometheus, Grafana | not fired (broker is RabbitMQ, the Lambda lives in AWS) |
 | **Kubernetes + Learner Lab** (`kubectl apply -k k8s/`) | same, with the APIs on Amazon SQS | Lambda logs in CloudWatch |
 
 Required sibling layout (compose build contexts are relative):
@@ -64,11 +64,12 @@ repos/
 | --- | --- | --- | --- |
 | **Kong proxy (single entry point)** | http://localhost:8000 | http://localhost:8000 (LoadBalancer 8000; Traefik owns 80 on Rancher Desktop) | `/identity/**`, `/catalog/**`, `/payments/**` |
 | Kong status + metrics | http://localhost:8100/metrics | in-cluster `kong-status:8100` | scraped by Prometheus |
-| Grafana | http://localhost:3000/d/kongroo | http://localhost:3000/d/kongroo | anonymous Viewer; `admin` / `development` |
+| Grafana | http://localhost:3000/d/kongroo | http://localhost:3000/d/kongroo | anonymous Viewer; `admin` / `GRAFANA_ADMIN_PASSWORD` from `.env` |
 | Prometheus | http://localhost:9090 | `kubectl -n kongroo port-forward svc/prometheus 9090` | targets: identity-api, catalog-api, payments-api, kong |
-| RabbitMQ UI | http://localhost:15672 | `port-forward svc/rabbitmq 15672` | `kongroo` / `development` |
+| RabbitMQ UI | http://localhost:15672 | `port-forward svc/rabbitmq 15672` | `kongroo` / `RABBITMQ_PASSWORD` from `.env` |
 | identity-api / catalog-api / payments-api | 5101 / 5102 / 5103 (direct, dev only) | ClusterIP 8080 only; go through Kong | |
 | postgres / mongodb / redis | 5432 / 27017 / 6379 | ClusterIP | |
+| elasticsearch | http://localhost:9200 | ClusterIP 9200 | `elastic` / `ELASTIC_PASSWORD` from `.env`; plain HTTP, `elasticsearch:9.5.5` |
 
 ### Gateway routes
 
@@ -79,23 +80,40 @@ repos/
 | `/catalog/**` | catalog-api | yes |
 | `/payments/**` | payments-api | yes |
 
-Kong validates the HS256 signature and `exp` against the shared development signing key (inline in
-`k8s/kong/kong.yaml`, which Kubernetes mounts from a Secret), then forwards the `Authorization` header so
-each service still validates the token itself.
+Kong validates the HS256 signature and `exp` against the shared signing key `JWT_SIGNING_KEY`, then
+forwards the `Authorization` header so each service still validates the token itself. The committed
+`k8s/kong/kong.yaml` holds only the placeholder `__JWT_SIGNING_KEY__`; Kong's start command substitutes
+the key from its environment (`.env` in compose, `kong-secret` in Kubernetes, where the file is a
+`configMapGenerator`) into a temporary copy and starts from that.
 
-## Bring-up: Docker Compose
+## Getting started (fresh clone)
 
 ```powershell
-docker compose up --build -d
+foreach ($repo in "Identity", "Catalog", "Payments", "Notifications", "Orchestration") {
+    git clone "https://github.com/almeidajr/Kongroo.$repo"
+}
+cd Kongroo.Orchestration
+./scripts/new-secrets.ps1              # every local credential, see Secrets below
+docker compose up --build -d           # or: kubectl apply -k k8s/ (see the Kubernetes bring-up)
 ./scripts/demo.ps1                     # register → login → publish game → buy → review, all via Kong
 ```
-`init-db.sql` creates the three PostgreSQL databases on the first start (`docker compose down -v` to reset).
+
+`new-secrets.ps1` writes the git-ignored `.env`, sets the three APIs' user-secrets (for `dotnet run`)
+and creates the Kubernetes Secrets in the current kube context. Pass `-SkipKubernetes` on a machine
+without a cluster and `-SkipUserSecrets` without the .NET SDK. Compose reads `.env` on its own and stops
+with "run scripts/new-secrets.ps1" when it is missing. `init-db.sql` creates the three PostgreSQL
+databases on the first start (`docker compose down -v` to reset).
+
+Volumes created before Phase 4 hold the old committed passwords, and the APIs fail to authenticate
+against them. Delete them once: `docker compose down -v`, and `kubectl delete namespace kongroo` for
+k3s, then run `new-secrets.ps1` again. The same applies whenever `.env` is deleted.
 
 ## Bring-up: Kubernetes + AWS Academy Learner Lab
 
 1. **Start the lab** and paste **AWS Details → AWS CLI** into `~/.aws/credentials` (`[default]` profile).
 2. **Deploy the Lambda once** (from `../Kongroo.Notifications`): `sam build && sam deploy`. Redeploy only when the function changes.
-3. **Deploy the cluster**: `kubectl apply -k k8s/`
+3. **Deploy the cluster**: `./scripts/new-secrets.ps1` (creates the namespace and every Secret; safe to
+   rerun), then `kubectl apply -k k8s/`
 4. **Load the session credentials** into the cluster. **Run this after every `kubectl apply -k k8s/`** (the apply resets the Secret to placeholders) **and after every new lab session**:
    `./scripts/set-aws-credentials.ps1` writes the `aws-credentials` Secret and restarts the three APIs.
    The `masstransit-bus` health check is in the `ready` set, so stale credentials keep the API pods out of
@@ -128,10 +146,11 @@ k8s/
   kustomization.yaml            namespace, resources, images, configMapGenerators
   namespace.yaml
   aws-credentials.secret.yaml   placeholders, refreshed by scripts/set-aws-credentials.ps1
-  kong/                         kong.yaml (declarative, mounted from a generated Secret), deployment, LoadBalancer service, status service
+  kong/                         kong.yaml (declarative, key placeholder, from a configMapGenerator), deployment, LoadBalancer service, status service
   prometheus/                   prometheus.yml (static targets), deployment, service
-  grafana/                      provisioning (datasource, dashboard provider), dashboards/kongroo.json, deployment, service, secret
-  postgres/  rabbitmq/  mongodb/  redis/
+  grafana/                      provisioning (datasource, dashboard provider), dashboards/kongroo.json, deployment, service
+  postgres/  rabbitmq/  mongodb/  redis/  elasticsearch/
+                                no Secret manifests: scripts/new-secrets.ps1 creates them
   identity/  catalog/  payments/   ← generated by sync.ps1 from the service repos; do not edit
 ```
 
@@ -139,7 +158,8 @@ k8s/
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/check.ps1` | `kong config parse`, `kubectl kustomize`, `sync.ps1 -Check` |
+| `scripts/new-secrets.ps1` | Generates every local credential into `.env` (only if absent), sets the APIs' user-secrets and creates the Kubernetes Secrets; idempotent |
+| `scripts/check.ps1` | No `secret.yaml` anywhere, `kong config parse`, `kubectl kustomize`, `docker compose config`, `cfn-lint` on `eks/*-stack.yaml` (needs `cfn-lint` on PATH, e.g. `uv tool install cfn-lint`), `sync.ps1 -Check` |
 | `scripts/demo.ps1` | Drives every graded flow through Kong (compose defaults; `./scripts/demo.ps1 -AdminUsername admin` for k8s) |
 | `scripts/set-aws-credentials.ps1` | Copies Learner Lab credentials into the cluster and restarts the APIs |
 | `sync.ps1` | Regenerates `k8s/<service>/` from the sibling repos (`-Check` detects drift) |
@@ -158,12 +178,29 @@ k8s/
   send).
 - Lambda logs are in CloudWatch (`sam logs`), the centralized platform for the serverless piece.
 
-## Credentials (development values, committed on purpose)
+## Secrets
 
-| Where | Value |
-| --- | --- |
-| Postgres / RabbitMQ / MongoDB | `kongroo` / `development` |
-| JWT signing key | `Development.SigningKey.AtLeast32Characters!` (identity, catalog, kong secrets must match) |
-| Bootstrap admin | compose `developer` / `Sup3rSecure!`; k8s `admin` / `Sup3rSecure!` |
-| Grafana admin | `admin` / `development` |
-| AWS | never committed; Learner Lab session values via `scripts/set-aws-credentials.ps1` |
+No password, key, token or connection string is committed. Locally, `scripts/new-secrets.ps1` generates
+random values into the git-ignored `.env` once and reuses them on every rerun; from that file it creates
+the Kubernetes Secrets in the current context and sets the APIs' user-secrets (hosts rewritten to
+`localhost`). Each cloud day, `eks/up.ps1` runs the same script against EKS with a fresh git-ignored
+`eks/.env`, so cloud and local never share a value. Usernames, hostnames, issuer and audience are
+configuration, not secrets.
+
+| Credential | Local source | Cloud source (EKS) | How it is injected |
+| --- | --- | --- | --- |
+| `POSTGRES_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose `${POSTGRES_PASSWORD}`; Secret `postgres-secret` |
+| `RABBITMQ_PASSWORD` | `.env` | `eks/.env` (unused: EKS runs on SQS, the overlay drops RabbitMQ) | compose; Secret `rabbitmq-secret`; `RabbitMq__Pass` in each API's Secret and user-secrets |
+| `MONGO_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose; Secret `mongodb-secret` |
+| `GRAFANA_ADMIN_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose; Secret `grafana-secret` |
+| `ELASTIC_PASSWORD` | `.env` | `eks/.env` (unused: the overlay drops the local Elasticsearch, Catalog uses Elastic Cloud) | compose; Secret `elasticsearch-secret`; Catalog `Search__Password` in `catalog-secret` and user-secrets |
+| `JWT_SIGNING_KEY` (hex) | `.env` | `eks/.env`, new each cloud day | `Jwt__SigningKey` in `identity-secret`, `catalog-secret`, `payments-secret` and user-secrets; Kong reads it from `kong-secret` (compose: `.env`) and substitutes it into `kong.yaml` at start |
+| `BOOTSTRAP_ADMIN_PASSWORD` | `.env` | `eks/.env`, new each cloud day | `BootstrapAdmin__Password` in `identity-secret` and user-secrets; `demo.ps1` reads it from `.env` |
+| `IDENTITY_` / `CATALOG_` / `PAYMENTS_DATABASE_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | `ConnectionStrings__Database` in each API's Secret and user-secrets |
+| `MONGO_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | Catalog `Mongo__ConnectionString` in `catalog-secret` and user-secrets |
+| `REDIS_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | Catalog `ConnectionStrings__Redis` in `catalog-secret` and user-secrets |
+| Elastic Cloud user (`kongroo-catalog`) | none: local search uses the `elastic` user above | `SEARCH_URI` / `SEARCH_USERNAME` / `SEARCH_PASSWORD` in the hand-filled, git-ignored `eks/cloud.env`; `eks/up.ps1` stops without it | `Search__Uri`, `Search__Username`, `Search__Password` in `catalog-secret`, which overrides `catalog-config` |
+| AWS | Learner Lab session keys pasted into `~/.aws/credentials` | none in the cluster: pods use the node's `LabRole` through IMDS; CI gets the session keys as repository secrets from `eks/arm.ps1` | k3s: `scripts/set-aws-credentials.ps1` fills the `aws-credentials` Secret (committed with placeholders only); AWS SDK default credential chain |
+
+Known trade-off: `new-secrets.ps1` passes values to `kubectl create secret --from-literal`, so they are
+briefly visible on the local machine's process list while the script runs.
