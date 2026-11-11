@@ -10,11 +10,14 @@
 .PARAMETER AdminPassword
   Bootstrap admin password. Default: BOOTSTRAP_ADMIN_PASSWORD from the .env written by new-secrets.ps1,
   which seeds both compose and the Kubernetes identity-secret.
+.PARAMETER PassThru
+  Also output the game, the order and the player's token, for eks/smoke.ps1's follow-up checks.
 #>
 param(
     [string]$Gateway = "http://localhost:8000",
     [string]$AdminUsername = "developer",
-    [string]$AdminPassword
+    [string]$AdminPassword,
+    [switch]$PassThru
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,7 +52,7 @@ Write-Host "`n[2] Register player$suffix (POST /identity/users, no token)" -Fore
 $player = Invoke-Api POST "/identity/users" @{
     username = "player$suffix"; email = "player$suffix@kongroo.dev"; password = "Play3r!Pass"; name = "Player $suffix"
 }
-$player | Format-List id, username, email
+$player | Format-List id, username, email | Out-Host
 
 Write-Host "`n[3] Login as player and as admin (POST /identity/tokens)" -ForegroundColor Cyan
 $playerToken = (Invoke-Api POST "/identity/tokens" @{ username = "player$suffix"; password = "Play3r!Pass" }).accessToken
@@ -57,7 +60,7 @@ $adminToken = (Invoke-Api POST "/identity/tokens" @{ username = $AdminUsername; 
 Write-Host "Player token: $($playerToken.Substring(0, [Math]::Min(24, $playerToken.Length)))..."
 
 Write-Host "`n[3b] Protected Identity route through Kong" -ForegroundColor Cyan
-Invoke-Api GET "/identity/users/me" -Token $playerToken | Format-List id, username, email
+Invoke-Api GET "/identity/users/me" -Token $playerToken | Format-List id, username, email | Out-Host
 foreach ($case in @(
         @{ Label = "no token"; Headers = @{} },
         @{ Label = "tampered token"; Headers = @{ Authorization = "Bearer $($playerToken.Substring(0, $playerToken.Length - 2))xx" } })) {
@@ -96,15 +99,21 @@ if ($current.status -eq "pending") {
 }
 
 Write-Host "`n[7] Library and payment record" -ForegroundColor Cyan
-Invoke-Api GET "/catalog/ownerships" -Token $playerToken | Format-Table gameId, orderId, acquiredAt
-Invoke-Api GET "/payments/$($order.id)" -Token $playerToken | Format-List
+Invoke-Api GET "/catalog/ownerships" -Token $playerToken | Format-Table gameId, orderId, acquiredAt | Out-Host
+Invoke-Api GET "/payments/$($order.id)" -Token $playerToken | Format-List | Out-Host
 
 Write-Host "`n[8] Player reviews the game (POST/GET /catalog/games/{id}/reviews -> MongoDB)" -ForegroundColor Cyan
-Invoke-Api POST "/catalog/games/$($game.id)/reviews" @{ rating = 5; text = "Flawless puzzle design." } $playerToken | Format-List id, rating, text, createdAt
-Invoke-Api GET "/catalog/games/$($game.id)/reviews" -Token $playerToken | Format-List gameId, averageRating, count
+Invoke-Api POST "/catalog/games/$($game.id)/reviews" @{ rating = 5; text = "Flawless puzzle design." } $playerToken | Format-List id, rating, text, createdAt | Out-Host
+Invoke-Api GET "/catalog/games/$($game.id)/reviews" -Token $playerToken | Format-List gameId, averageRating, count | Out-Host
 
 Write-Host "`n[9] Cached game read (second call served by HybridCache/Redis)" -ForegroundColor Cyan
 foreach ($attempt in 1..2) {
     $elapsed = Measure-Command { Invoke-Api GET "/catalog/games/$($game.id)" -Token $playerToken | Out-Null }
     Write-Host ("GET /catalog/games/{0} #{1}: {2} ms" -f $game.id, $attempt, [int]$elapsed.TotalMilliseconds)
+}
+
+if ($PassThru) {
+    [pscustomobject]@{
+        GameId = $game.id; GameTitle = $game.title; OrderId = $order.id; OrderStatus = $current.status; PlayerToken = $playerToken
+    }
 }
