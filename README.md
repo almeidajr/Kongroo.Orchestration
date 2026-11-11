@@ -86,27 +86,27 @@ forwards the `Authorization` header so each service still validates the token it
 the key from its environment (`.env` in compose, `kong-secret` in Kubernetes, where the file is a
 `configMapGenerator`) into a temporary copy and starts from that.
 
-## Getting started (fresh clone)
+## Bring-up: Docker Compose (fresh clone)
 
 ```powershell
 foreach ($repo in "Identity", "Catalog", "Payments", "Notifications", "Orchestration") {
     git clone "https://github.com/almeidajr/Kongroo.$repo"
 }
 cd Kongroo.Orchestration
-./scripts/new-secrets.ps1              # every local credential, see Secrets below
-docker compose up --build -d           # or: kubectl apply -k k8s/ (see the Kubernetes bring-up)
-./scripts/demo.ps1                     # register → login → publish game → buy → review, all via Kong
+./scripts/new-secrets.ps1 -SkipKubernetes   # every local credential, see Secrets below
+docker compose up --build -d
+./scripts/demo.ps1                          # register → login → publish game → buy → review, all via Kong
 ```
 
-`new-secrets.ps1` writes the git-ignored `.env`, sets the three APIs' user-secrets (for `dotnet run`)
-and creates the Kubernetes Secrets in the current kube context. Pass `-SkipKubernetes` on a machine
-without a cluster and `-SkipUserSecrets` without the .NET SDK. Compose reads `.env` on its own and stops
-with "run scripts/new-secrets.ps1" when it is missing. `init-db.sql` creates the three PostgreSQL
-databases on the first start (`docker compose down -v` to reset).
+For Kubernetes, clone the same way and follow the next section instead of `docker compose up`.
+`-SkipKubernetes` leaves the cluster alone; `-SkipUserSecrets` skips the APIs' user-secrets on a machine
+without the .NET SDK. Compose reads `.env` on its own and stops with "run scripts/new-secrets.ps1" when
+it is missing. `init-db.sql` creates the three PostgreSQL databases on the first start
+(`docker compose down -v` to reset).
 
-Volumes created before Phase 4 hold the old committed passwords, and the APIs fail to authenticate
-against them. Delete them once: `docker compose down -v`, and `kubectl delete namespace kongroo` for
-k3s, then run `new-secrets.ps1` again. The same applies whenever `.env` is deleted.
+Volumes created before `new-secrets.ps1` existed hold the old committed passwords, and the APIs fail
+to authenticate against them. Delete them once: `docker compose down -v`, and
+`kubectl delete namespace kongroo` for k3s, then run `new-secrets.ps1` again. The same applies whenever `.env` is deleted.
 
 ## Bring-up: Kubernetes + AWS Academy Learner Lab
 
@@ -183,24 +183,25 @@ k8s/
 No password, key, token or connection string is committed. Locally, `scripts/new-secrets.ps1` generates
 random values into the git-ignored `.env` once and reuses them on every rerun; from that file it creates
 the Kubernetes Secrets in the current context and sets the APIs' user-secrets (hosts rewritten to
-`localhost`). Each cloud day, `eks/up.ps1` runs the same script against EKS with a fresh git-ignored
-`eks/.env`, so cloud and local never share a value. Usernames, hostnames, issuer and audience are
-configuration, not secrets.
+`localhost`). The EKS deployment is planned, not built yet: `eks/up.ps1`, `eks/arm.ps1` and the EKS
+overlay do not exist. Once they do, each cloud day `eks/up.ps1` will run the same script against EKS
+with a fresh git-ignored `eks/.env`, so cloud and local never share a value. Usernames, hostnames,
+issuer and audience are configuration, not secrets.
 
-| Credential | Local source | Cloud source (EKS) | How it is injected |
+| Credential | Local source | Cloud source (EKS, planned) | How it is injected |
 | --- | --- | --- | --- |
 | `POSTGRES_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose `${POSTGRES_PASSWORD}`; Secret `postgres-secret` |
-| `RABBITMQ_PASSWORD` | `.env` | `eks/.env` (unused: EKS runs on SQS, the overlay drops RabbitMQ) | compose; Secret `rabbitmq-secret`; `RabbitMq__Pass` in each API's Secret and user-secrets |
+| `RABBITMQ_PASSWORD` | `.env` | `eks/.env` (unused: EKS runs on SQS, the overlay will drop RabbitMQ) | compose; Secret `rabbitmq-secret`; `RabbitMq__Pass` in each API's Secret and user-secrets |
 | `MONGO_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose; Secret `mongodb-secret` |
 | `GRAFANA_ADMIN_PASSWORD` | `.env` | `eks/.env`, new each cloud day | compose; Secret `grafana-secret` |
-| `ELASTIC_PASSWORD` | `.env` | `eks/.env` (unused: the overlay drops the local Elasticsearch, Catalog uses Elastic Cloud) | compose; Secret `elasticsearch-secret`; Catalog `Search__Password` in `catalog-secret` and user-secrets |
+| `ELASTIC_PASSWORD` | `.env` | `eks/.env` (unused: the overlay will drop the local Elasticsearch, Catalog will use Elastic Cloud) | compose; Secret `elasticsearch-secret`; Catalog `Search__Password` in `catalog-secret` and user-secrets |
 | `JWT_SIGNING_KEY` (hex) | `.env` | `eks/.env`, new each cloud day | `Jwt__SigningKey` in `identity-secret`, `catalog-secret`, `payments-secret` and user-secrets; Kong reads it from `kong-secret` (compose: `.env`) and substitutes it into `kong.yaml` at start |
 | `BOOTSTRAP_ADMIN_PASSWORD` | `.env` | `eks/.env`, new each cloud day | `BootstrapAdmin__Password` in `identity-secret` and user-secrets; `demo.ps1` reads it from `.env` |
-| `IDENTITY_` / `CATALOG_` / `PAYMENTS_DATABASE_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | `ConnectionStrings__Database` in each API's Secret and user-secrets |
+| `IDENTITY_DATABASE_CONNECTION_STRING`, `CATALOG_DATABASE_CONNECTION_STRING`, `PAYMENTS_DATABASE_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | `ConnectionStrings__Database` in each API's Secret and user-secrets |
 | `MONGO_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | Catalog `Mongo__ConnectionString` in `catalog-secret` and user-secrets |
 | `REDIS_CONNECTION_STRING` | `.env` | `eks/.env`, new each cloud day | Catalog `ConnectionStrings__Redis` in `catalog-secret` and user-secrets |
-| Elastic Cloud user (`kongroo-catalog`) | none: local search uses the `elastic` user above | `SEARCH_URI` / `SEARCH_USERNAME` / `SEARCH_PASSWORD` in the hand-filled, git-ignored `eks/cloud.env`; `eks/up.ps1` stops without it | `Search__Uri`, `Search__Username`, `Search__Password` in `catalog-secret`, which overrides `catalog-config` |
-| AWS | Learner Lab session keys pasted into `~/.aws/credentials` | none in the cluster: pods use the node's `LabRole` through IMDS; CI gets the session keys as repository secrets from `eks/arm.ps1` | k3s: `scripts/set-aws-credentials.ps1` fills the `aws-credentials` Secret (committed with placeholders only); AWS SDK default credential chain |
+| Elastic Cloud user (`kongroo-catalog`) | none: local search uses the `elastic` user above | `SEARCH_URI` / `SEARCH_USERNAME` / `SEARCH_PASSWORD` in the hand-filled, git-ignored `eks/cloud.env`; `eks/up.ps1` will stop without it | `Search__Uri`, `Search__Username`, `Search__Password` in `catalog-secret`, which overrides `catalog-config` |
+| AWS | Learner Lab session keys pasted into `~/.aws/credentials` | none in the cluster: pods will use the node's `LabRole` through IMDS; CI will get the session keys as repository secrets from `eks/arm.ps1` | k3s: `scripts/set-aws-credentials.ps1` fills the `aws-credentials` Secret (committed with placeholders only); AWS SDK default credential chain |
 
 Known trade-off: `new-secrets.ps1` passes values to `kubectl create secret --from-literal`, so they are
 briefly visible on the local machine's process list while the script runs.

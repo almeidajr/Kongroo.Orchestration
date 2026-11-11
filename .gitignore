@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# hand-filled Elastic Cloud credentials (EKS)
+eks/cloud.env
