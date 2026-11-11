@@ -49,10 +49,18 @@ function Write-EnvFile([string]$Path, [System.Collections.Specialized.OrderedDic
     Set-Content -Path $Path -Value (($lines -join "`n") + "`n") -NoNewline
 }
 
-if (Test-Path $EnvFile) {
+function Read-EnvFile([string]$Path) {
+    Get-Content -Raw $Path | ConvertFrom-StringData
+}
+
+# $secrets holds the effective values either way, so later targets (k8s Secrets, user-secrets) build from it.
+$secrets = if (Test-Path $EnvFile) {
     Write-Host "$EnvFile already exists; left untouched."
+    Read-EnvFile $EnvFile
 }
 else {
-    Write-EnvFile $EnvFile (New-LocalSecrets)
+    $generated = New-LocalSecrets
+    Write-EnvFile $EnvFile $generated
     Write-Host "Wrote $EnvFile." -ForegroundColor Green
+    $generated
 }
