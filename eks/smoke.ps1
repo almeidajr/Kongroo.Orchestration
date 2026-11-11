@@ -37,11 +37,14 @@ Invoke-Check "AWS credentials" {
     if ($LASTEXITCODE -ne 0) { throw "aws sts get-caller-identity failed: refresh credentials" }
 }
 
-$envFile = Join-Path $PSScriptRoot ".env"
-if (-not (Test-Path $envFile)) { throw "Not found: $envFile. Run eks/up.ps1 first." }
-$eksEnv = Get-Content -Raw $envFile | ConvertFrom-StringData
+$eksEnv = $null
+Invoke-Check "eks/.env has KONG_URL and BOOTSTRAP_ADMIN_PASSWORD" {
+    $envFile = Join-Path $PSScriptRoot ".env"
+    if (-not (Test-Path $envFile)) { throw "Not found: $envFile. Run eks/up.ps1 first." }
+    $script:eksEnv = Get-Content -Raw $envFile | ConvertFrom-StringData
+    if (-not $script:eksEnv.KONG_URL -or -not $script:eksEnv.BOOTSTRAP_ADMIN_PASSWORD) { throw "$envFile lacks KONG_URL or BOOTSTRAP_ADMIN_PASSWORD: rerun eks/up.ps1 after down.ps1." }
+}
 $gateway = $eksEnv.KONG_URL
-if (-not $gateway -or -not $eksEnv.BOOTSTRAP_ADMIN_PASSWORD) { throw "$envFile lacks KONG_URL or BOOTSTRAP_ADMIN_PASSWORD: rerun eks/up.ps1 after down.ps1." }
 
 Invoke-Check "every kongroo pod Ready" {
     kubectl --context $kubeContext -n kongroo wait --for=condition=Ready pod --all --timeout=15m
@@ -84,8 +87,11 @@ Invoke-Check "4. misspelled search finds the demo game" {
     $headers = @{ Authorization = "Bearer $($demo.PlayerToken)" }
     # Indexing runs through the outbox and a consumer, so the game reaches Elasticsearch a little after it is published.
     Wait-Until -Description "GET /catalog/search?q=$query did not return game $($demo.GameId)" -Timeout ([TimeSpan]::FromMinutes(3)) -Condition {
-        $hits = Invoke-RestMethod -Uri "$gateway/catalog/search?q=$([Uri]::EscapeDataString($query))&limit=50" -Headers $headers
-        $hits.id -contains $demo.GameId
+        try {
+            $hits = Invoke-RestMethod -Uri "$gateway/catalog/search?q=$([Uri]::EscapeDataString($query))&limit=50" -Headers $headers
+            $hits.id -contains $demo.GameId
+        }
+        catch { $false }
     }
     Write-Output "GET /catalog/search?q=$query returned game $($demo.GameId)"
 }

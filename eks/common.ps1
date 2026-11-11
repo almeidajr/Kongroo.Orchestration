@@ -1,4 +1,4 @@
-# Dot-sourced by up.ps1, down.ps1 and scripts/new-secrets.ps1 -Target Eks.
+# Dot-sourced by up.ps1, down.ps1, smoke.ps1 and scripts/new-secrets.ps1 -Target Eks.
 $region = "us-east-1"
 $cluster = "kongroo"
 $kubeContext = "kongroo-eks"
