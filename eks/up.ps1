@@ -5,21 +5,17 @@
   and the Kong URL written to eks/.env.
 .DESCRIPTION
   Needs the Learner Lab keys in ~/.aws/credentials and the hand-filled eks/cloud.env. Every value in eks/.env is new on each run,
-  so rerunning it on a live cluster leaves the datastores on the old passwords: run down.ps1 first. The current kube context is
-  never changed; the cluster is reached through context kongroo-eks.
+  so it refuses to run while namespace kongroo exists on the cluster: run down.ps1 first. The current kube context is never
+  changed; the cluster is reached through context kongroo-eks.
 #>
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
-$region = "us-east-1"
-$kubeContext = "kongroo-eks"
+. "$PSScriptRoot/common.ps1"
 
 aws sts get-caller-identity | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws sts get-caller-identity failed: refresh credentials" }
 
-$cloudEnvFile = Join-Path $PSScriptRoot "cloud.env"
-if (-not (Test-Path $cloudEnvFile)) {
-    throw "$cloudEnvFile not found: fill it by hand with SEARCH_URI, SEARCH_USERNAME and SEARCH_PASSWORD of the Elastic Cloud kongroo-catalog user."
-}
+$cloud = Read-CloudEnv
 
 # No --role-arn: CloudFormation must call EKS as the creator (voclabs), or LabRole gets the admin entry and nodes cannot join (ADR 0001).
 $stacks = [ordered]@{ "kongroo-registry" = "registry-stack.yaml"; "kongroo-cluster" = "cluster-stack.yaml" }
@@ -29,20 +25,17 @@ foreach ($stack in $stacks.GetEnumerator()) {
     if ($LASTEXITCODE -ne 0) { throw "Stack $($stack.Key) failed: read its events in the CloudFormation console, then run down.ps1 and up.ps1" }
 }
 
-$previousContext = kubectl config current-context 2>$null
-try {
-    aws eks update-kubeconfig --region $region --name kongroo --alias $kubeContext
-    if ($LASTEXITCODE -ne 0) { throw "aws eks update-kubeconfig failed" }
-}
-finally {
-    # update-kubeconfig switches to the new context; local scripts expect the previous one.
-    if ($previousContext) { kubectl config use-context $previousContext | Out-Null }
-}
+Connect-EksCluster
+
+# Postgres and Mongo keep the passwords their volumes were created with, so new Secrets on a live cluster break the APIs at the
+# next pod restart, and the index delete below would pull the games out from under a running Catalog.
+$liveNamespace = kubectl --context $kubeContext get namespace kongroo --ignore-not-found -o name
+if ($LASTEXITCODE -ne 0) { throw "kubectl cannot reach cluster $cluster through context $kubeContext" }
+if ($liveNamespace) { throw "Namespace kongroo already exists in context $kubeContext (a live cloud day): run eks/down.ps1 first, then up.ps1." }
 
 & "$root/scripts/new-secrets.ps1" -Target Eks
 
 # The day's Postgres starts empty, so yesterday's documents must go; Catalog recreates the index and backfills it.
-$cloud = ConvertFrom-StringData (Get-Content -Raw $cloudEnvFile)
 $basic = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($cloud.SEARCH_USERNAME):$($cloud.SEARCH_PASSWORD)"))
 $response = Invoke-WebRequest -Method Delete -Uri "$($cloud.SEARCH_URI.TrimEnd('/'))/games" -Headers @{ Authorization = "Basic $basic" } -SkipHttpErrorCheck
 if ($response.StatusCode -notin 200, 404) { throw "Deleting the Elastic Cloud games index returned $($response.StatusCode): $($response.Content)" }

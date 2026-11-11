@@ -84,14 +84,9 @@ $isEks = $Target -eq "Eks"
 if ($isEks) {
     if ($PSBoundParameters.ContainsKey("EnvFile")) { throw "-Target Eks always writes eks/.env; drop -EnvFile." }
     $eksFolder = Join-Path (Split-Path $PSScriptRoot -Parent) "eks"
+    . "$eksFolder/common.ps1"
     $EnvFile = Join-Path $eksFolder ".env"
-    $cloudEnvFile = Join-Path $eksFolder "cloud.env"
-    if (-not (Test-Path $cloudEnvFile)) {
-        throw "$cloudEnvFile not found: fill it by hand with SEARCH_URI, SEARCH_USERNAME and SEARCH_PASSWORD of the Elastic Cloud kongroo-catalog user."
-    }
-    $cloud = Read-EnvFile $cloudEnvFile
-    $missing = @("SEARCH_URI", "SEARCH_USERNAME", "SEARCH_PASSWORD" | Where-Object { -not $cloud[$_] })
-    if ($missing) { throw "$cloudEnvFile lacks a value for $($missing -join ', ')" }
+    $cloud = Read-CloudEnv
 }
 
 # $secrets holds the effective values either way, so later targets (k8s Secrets, user-secrets) build from it.
@@ -184,7 +179,7 @@ $kubernetesSecrets = [ordered]@{
 # The EKS overlay runs neither RabbitMQ (SNS/SQS instead) nor a local Elasticsearch (Elastic Cloud instead).
 if ($isEks) { "rabbitmq-secret", "elasticsearch-secret" | ForEach-Object { $kubernetesSecrets.Remove($_) } }
 # The EKS context is always named; the current context is never changed.
-$kubeContext = $isEks ? "kongroo-eks" : (kubectl config current-context)
+$kubeContext = $isEks ? $kubeContext : (kubectl config current-context)
 $contextArguments = $isEks ? @("--context", $kubeContext) : @()
 
 function Invoke-KubectlApply([string[]]$CreateArguments) {

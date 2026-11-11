@@ -7,10 +7,8 @@
   fails naming them. The registry stack and the kongroo-notifications SAM stack stay. Safe to rerun, also after a failed up.ps1.
 #>
 $ErrorActionPreference = "Stop"
-$region = "us-east-1"
-$cluster = "kongroo"
+. "$PSScriptRoot/common.ps1"
 $clusterStack = "kongroo-cluster"
-$kubeContext = "kongroo-eks"
 $clusterTag = "kubernetes.io/cluster/$cluster"
 
 aws sts get-caller-identity | Out-Null
@@ -39,22 +37,22 @@ function Get-ClusterInstance {
     "Name=instance-state-name,Values=pending,running,shutting-down,stopping,stopped", "--query", "Reservations[].Instances[].InstanceId"
 }
 
+function Get-KubeContextEntry {
+    $config = kubectl config view -o json
+    if ($LASTEXITCODE -ne 0) { throw "kubectl config view failed" }
+    (($config -join "`n") | ConvertFrom-Json).contexts | Where-Object name -EQ $kubeContext
+}
+
 & "$PSScriptRoot/arm.ps1" -Disarm
 
 # Kong's ELB and the CSI-created EBS volumes are not in the stack: they go with the namespace, while the nodes still run.
-$clusterStatus = aws eks describe-cluster --region $region --name $cluster --query cluster.status --output text 2>$null
+$clusterStatus = aws eks describe-cluster --region $region --name $cluster --query cluster.status --output text 2>&1
+if ($LASTEXITCODE -ne 0) {
+    if ("$clusterStatus" -notmatch "ResourceNotFoundException") { throw "aws eks describe-cluster failed: $clusterStatus" }
+    $clusterStatus = $null
+}
 if ($clusterStatus -eq "ACTIVE") {
-    $existingContext = kubectl config get-contexts $kubeContext -o name 2>$null
-    if (-not $existingContext) {
-        $previousContext = kubectl config current-context 2>$null
-        try {
-            aws eks update-kubeconfig --region $region --name $cluster --alias $kubeContext
-            if ($LASTEXITCODE -ne 0) { throw "aws eks update-kubeconfig failed" }
-        }
-        finally {
-            if ($previousContext) { kubectl config use-context $previousContext | Out-Null }
-        }
-    }
+    if (-not (Get-KubeContextEntry)) { Connect-EksCluster }
     Write-Output "Deleting namespace kongroo (Kong's load balancer and every PVC)"
     kubectl --context $kubeContext delete namespace kongroo --ignore-not-found --wait --timeout=15m
     if ($LASTEXITCODE -ne 0) { throw "kubectl delete namespace kongroo failed" }
@@ -82,11 +80,12 @@ $leftovers = [ordered]@{
 $billing = @($leftovers.GetEnumerator() | Where-Object { $_.Value } | ForEach-Object { "$($_.Key): $($_.Value -join ', ')" })
 if ($billing) { throw "NOT safe to End Lab, still billing: $($billing -join '; ')" }
 
-$entry = (kubectl config view -o json | ConvertFrom-Json).contexts | Where-Object name -EQ $kubeContext
+$entry = Get-KubeContextEntry
 if ($entry) {
-    kubectl config delete-context $kubeContext | Out-Null
-    kubectl config delete-cluster $entry.context.cluster | Out-Null
-    kubectl config delete-user $entry.context.user | Out-Null
+    foreach ($arguments in @("delete-context", $kubeContext), @("delete-cluster", $entry.context.cluster), @("delete-user", $entry.context.user)) {
+        kubectl config @arguments | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "kubectl config $($arguments -join ' ') failed" }
+    }
 }
 
 Write-Output "Cluster stack deleted; no PVC volume, load balancer or node left. Registry and kongroo-notifications stacks kept. safe to End Lab"
