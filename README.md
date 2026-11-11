@@ -126,8 +126,8 @@ to authenticate against them. Delete them once: `docker compose down -v`, and
    up clean. That single restart is expected, not a fault.
 6. **Watch the Lambda**: `sam logs --stack-name kongroo-notifications --name NotificationsFunction --tail`
 
-Images are pulled from the pinned `josealmeidajr/kongroo-<service>:0.1.0` tags (`k8s/kustomization.yaml`).
-To publish new images: build in each service repo, `docker push`, bump the tag, run `./sync.ps1`.
+Images are pulled from `josealmeidajr/kongroo-<service>:<master commit SHA>`, pinned in `k8s/kustomization.yaml`.
+Each service's CI pushes that tag on every `master` push; to move k3s forward, bump the SHAs and run `./sync.ps1`.
 
 ### SNS/SQS topology
 
