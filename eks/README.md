@@ -68,7 +68,10 @@ lasts 14 days: every cloud day must fit inside it.
    ```
 
    Check: `aws sts get-caller-identity` answers with an `assumed-role/voclabs/…` ARN.
-3. **Bring the day up** (about 25 minutes: stacks, Secrets, overlay, arming, dispatches, Kong's load balancer).
+3. **Bring the day up** (about 20 minutes: stacks, Secrets, arming, the Notifications stack if missing, overlay, dispatches, Kong's load
+   balancer). On a lab account without the `kongroo-notifications` stack (the first cloud day), it deploys that stack through
+   Notifications' CI/CD before any API starts and waits for it (about 4 more minutes): the stack creates the two SNS topics the Lambda
+   subscribes to, so `up.ps1` first deletes any copy an earlier day's APIs left behind.
 
    ```powershell
    ./eks/up.ps1
@@ -82,7 +85,7 @@ lasts 14 days: every cloud day must fit inside it.
    "Identity", "Catalog", "Payments" | ForEach-Object { gh run list --repo "almeidajr/Kongroo.$_" --workflow ci-cd.yml --limit 1 }
    ```
 
-   Check: each dispatched run is `completed` / `success`, and
+   Check: each dispatched run is `completed` / `success` (about 5 minutes on a first day, when all three are missing), and
    `kubectl --context kongroo-eks -n kongroo get pods` shows no `ImagePullBackOff` (pods still starting are fine: `smoke.ps1` waits for
    them).
 
@@ -113,7 +116,7 @@ Check: the last line is `Smoke passed against http://<kong-lb-hostname>:8000`. O
 | every kongroo pod Ready | `kubectl --context kongroo-eks -n kongroo get pods`, then `describe pod` on the one not Ready |
 | 1. Kong load balancer | `kubectl --context kongroo-eks -n kongroo get service kong`; a new load balancer can take 5 minutes to resolve |
 | 2. demo.ps1 | the step it printed last; `kubectl --context kongroo-eks -n kongroo logs deploy/<service>-api` |
-| 3. Notifications Lambda | CloudWatch log group `/aws/lambda/kongroo-notifications`, the `kongroo-notifications-dlq` queue, stack `kongroo-notifications` |
+| 3. Notifications Lambda | CloudWatch log group `/aws/lambda/kongroo-notifications`, the `kongroo-notifications-dlq` queue, stack `kongroo-notifications` (`log group does not exist`: the stack is missing; section 4, then 1.3) |
 | 4. search | `kubectl --context kongroo-eks -n kongroo logs deploy/catalog-api`; the deployment's health in the Elastic console |
 
 ## 3. Seed

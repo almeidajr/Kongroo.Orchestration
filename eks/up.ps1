@@ -51,10 +51,28 @@ if ($usesElasticCloud) {
     Write-Output "Elastic Cloud games index cleared (HTTP $($response.StatusCode))"
 }
 
-& "$PSScriptRoot/apply.ps1" -LocalSearch:$LocalSearch
-
 # Armed before any dispatch: the dispatched run pushes to ECR and deploys only when ECR_REGISTRY and the keys are set.
 & "$PSScriptRoot/arm.ps1"
+
+# Only Notifications' CI deploys the Lambda stack, and it must land before the APIs start: the stack creates the two topics it
+# subscribes to, and CloudFormation refuses topics that already exist (MassTransit creates them on an API's first start).
+$output = aws cloudformation describe-stacks --region $region --stack-name kongroo-notifications 2>&1
+if ($LASTEXITCODE -eq 0) { Write-Output "Stack kongroo-notifications exists" }
+elseif ("$output" -notmatch "does not exist") { throw "aws cloudformation describe-stacks failed for kongroo-notifications: $output" }
+else {
+    $account = aws sts get-caller-identity --query Account --output text
+    foreach ($topic in "kongroo-user-created", "kongroo-payment-processed") {
+        aws sns delete-topic --region $region --topic-arn "arn:aws:sns:${region}:${account}:$topic"
+        if ($LASTEXITCODE -ne 0) { throw "aws sns delete-topic failed for $topic" }
+    }
+    $runUrl = gh workflow run ci-cd.yml --repo "almeidajr/Kongroo.Notifications" --ref master
+    if ($LASTEXITCODE -ne 0) { throw "gh workflow run failed for Kongroo.Notifications" }
+    Write-Output "Stack kongroo-notifications is missing: deploying it through Kongroo.Notifications's CI/CD ($runUrl)"
+    gh run watch ($runUrl -split "/")[-1] --repo "almeidajr/Kongroo.Notifications" --exit-status --interval 20 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Kongroo.Notifications's CI/CD failed: $runUrl" }
+}
+
+& "$PSScriptRoot/apply.ps1" -LocalSearch:$LocalSearch
 
 # Only CI writes to ECR (ADR 0002): a master HEAD without an image gets its pipeline run, which pushes and rolls it out.
 foreach ($name in "Identity", "Catalog", "Payments") {
