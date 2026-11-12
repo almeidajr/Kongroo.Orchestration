@@ -74,5 +74,14 @@ foreach ($repository in $repositories.GetEnumerator()) {
         Assert-Gh "set variable $($variable.Key) on $($repository.Key)"
     }
 }
+# The Learner Lab's session-end sweep disables the Lambda's SQS trigger (CloudTrail: LambdaESMDisabled); the stack survives with it off.
+# No output before the first day's stack exists.
+$disabledTriggers = aws lambda list-event-source-mappings --region $region --function-name kongroo-notifications `
+    --query "EventSourceMappings[?State=='Disabled'].UUID" --output text 2>$null
+foreach ($uuid in "$disabledTriggers" -split '\s+' | Where-Object { $_ -and $_ -ne "None" }) {
+    aws lambda update-event-source-mapping --region $region --uuid $uuid --enabled --query State --output text | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "aws lambda update-event-source-mapping failed to enable the kongroo-notifications trigger" }
+    Write-Output "Re-enabled the kongroo-notifications SQS trigger the lab disabled"
+}
 Set-LabClock -StartedAt $LabStartedAt
 Write-Output "CI armed: session keys on the four service repos, ECR_REGISTRY on the APIs, SAM_DEPLOY=true on Notifications."

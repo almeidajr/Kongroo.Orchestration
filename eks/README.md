@@ -35,13 +35,14 @@ lasts 14 days: every cloud day must fit inside it.
 
    ```text
    PUT _security/role/kongroo-games
-   { "indices": [ { "names": ["games"], "privileges": ["read", "write", "create_index", "delete_index"] } ] }
+   { "indices": [ { "names": ["games"], "privileges": ["read", "write", "create_index", "delete_index", "view_index_metadata"] } ] }
 
    POST _security/user/kongroo-catalog
    { "password": "<a password you choose>", "roles": ["kongroo-games"] }
    ```
 
-   Check: both answer `"created": true`. If the trial refuses the custom role, give the user the built-in `superuser` role instead
+   Check: both answer `"created": true`. `view_index_metadata` lets Catalog check that `games` exists before each write (without it,
+   indexing fails with `403 from: HEAD /games`). If the trial refuses the custom role, give the user the built-in `superuser` role instead
    (acceptable: the deployment holds nothing else).
 4. **Fill `eks/cloud.env`** (git-ignored) with the endpoint and that user:
 
@@ -119,7 +120,7 @@ Check: the last line is `Smoke passed against http://<kong-lb-hostname>:8000`. O
 | every kongroo pod Ready | `kubectl --context kongroo-eks -n kongroo get pods`, then `describe pod` on the one not Ready |
 | 1. Kong load balancer | `kubectl --context kongroo-eks -n kongroo get service kong`; a new load balancer can take 5 minutes to resolve |
 | 2. demo.ps1 | the step it printed last; `kubectl --context kongroo-eks -n kongroo logs deploy/<service>-api` |
-| 3. Notifications Lambda | CloudWatch log group `/aws/lambda/kongroo-notifications`, the `kongroo-notifications-dlq` queue, stack `kongroo-notifications` (`log group does not exist`: the stack is missing; section 4, then 1.3) |
+| 3. Notifications Lambda | CloudWatch log group `/aws/lambda/kongroo-notifications`, the `kongroo-notifications-dlq` queue, stack `kongroo-notifications` (`log group does not exist`: the stack is missing; section 4, then 1.3; its SQS trigger `Disabled`: the lab's session-end sweep, `./eks/arm.ps1` re-enables it) |
 | 4. search | `kubectl --context kongroo-eks -n kongroo logs deploy/catalog-api`; the deployment's health in the Elastic console |
 
 ## 3. Seed
