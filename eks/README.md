@@ -30,7 +30,8 @@ lasts 14 days: every cloud day must fit inside it.
 1. **Start the trial.** Sign up at <https://cloud.elastic.co>. Check: the console shows the trial's end date; note it.
 2. **Create the deployment** on AWS, region `us-east-1` (N. Virginia), version: the newest 9.5.x offered (local runs 9.5.5, which the
    cloud does not offer). Check: the deployment is healthy; copy its Elasticsearch endpoint (`https://…`).
-3. **Create the role and user.** In the deployment's Kibana, open Dev Tools and run:
+3. **Create the role and user.** In the Elastic Cloud console, open the deployment's **API console** (or Dev Tools in its Kibana) and
+   run:
 
    ```text
    PUT _security/role/kongroo-games
