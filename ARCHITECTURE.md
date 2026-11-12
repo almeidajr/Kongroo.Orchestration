@@ -65,8 +65,8 @@ flowchart LR
     identity -.->|UserCreated| sns{{SNS topics<br/>kongroo-*}}
     catalog -.->|OrderPlaced · GameIndexRequested| sns
     payments -.->|PaymentProcessed| sns
-    sns -.-> sqsp[/SQS payments-order-placed/] -.-> payments
-    sns -.-> sqsc[/SQS catalog-payment-processed<br/>catalog-game-index-requested/] -.-> catalog
+    sns -.-> sqsp[/SQS payments-order-placed-integration-event/] -.-> payments
+    sns -.-> sqsc[/SQS catalog-payment-processed-integration-event<br/>catalog-game-index-requested/] -.-> catalog
     sns -.-> sqsn[/SQS kongroo-notifications/] -.-> lambda[[AWS Lambda<br/>Notifications]] --> cw[CloudWatch Logs]
 
     ecr[(Amazon ECR<br/>kongroo-identity · kongroo-catalog · kongroo-payments)] -.->|image pull, SHA tags| identity
@@ -166,19 +166,16 @@ flowchart TB
   ADR 0001).
 - **The overlay** (`eks/kustomization.yaml`) is the local k3s base plus: ECR images at each repo's
   `master` SHA (filled at render time by `eks/apply.ps1`), **2 replicas** of each API, a default `gp3`
-  StorageClass (the EBS CSI driver), and RabbitMQ, the `aws-credentials` placeholder and (unless
+  StorageClass (the EBS CSI driver), Grafana's Service as ClusterIP, and RabbitMQ, the `aws-credentials` placeholder and (unless
   `-LocalSearch`) the local Elasticsearch removed. Postgres and MongoDB keep their data on EBS `gp3`
   volumes for the day. Elastic Cloud's URI and credentials reach Catalog only through `catalog-secret`,
   created from the hand-filled, git-ignored `eks/cloud.env`.
 - **Registry stack** (`eks/registry-stack.yaml`) and the **Notifications SAM stack** stay up between cloud
   days, so images and the Lambda survive each teardown.
-- **Bring-up order** (`eks/up.ps1`, as fixed on cloud day 1): registry and cluster stacks → Kubernetes
-  Secrets from a fresh `eks/.env` → arm CI → **the `kongroo-notifications` stack through Notifications'
-  pipeline, if missing, before any API starts** → overlay applied → pipelines dispatched for any `master`
-  SHA missing from ECR → Kong's load balancer hostname. The SAM template creates the topics
-  `kongroo-user-created` and `kongroo-payment-processed`, and CloudFormation refuses topics MassTransit
-  already created, so the Lambda's stack must come first (`up.ps1` deletes stray copies of those two
-  topics before deploying it).
+- **Bring-up order:** the `kongroo-notifications` stack must exist before any API starts. Its SAM template
+  creates the topics `kongroo-user-created` and `kongroo-payment-processed`, and CloudFormation refuses topics
+  MassTransit already created, so on a lab account without that stack `eks/up.ps1` deploys it through
+  Notifications' pipeline (deleting stray copies of those two topics) before it applies the overlay.
 
 ## CI/CD
 
@@ -224,7 +221,7 @@ flowchart LR
   a 5 s `preStop` sleep and 2 replicas on EKS. Manifest-only changes skip the pipeline: `eks/apply.ps1`.
 - **Cloud day 1:** a one-line Catalog change pushed to `master` built in about 3–4 min, rolled out in about
   45 s, and served its first new response about 4 min after the push; the revert went the same way.
-  `watch-release.ps1` saw 0 failed requests through both rollouts, and the deployed image SHA equalled
+  `scripts/watch-release.ps1` saw 0 failed requests through both rollouts, and the deployed image SHA equalled
   `master` HEAD each time.
 
 ## Services
@@ -408,7 +405,7 @@ sequenceDiagram
     Handler->>Handler: publish GameIndexRequested(GameId) to IPublishEndpoint
     Handler->>DB: SaveChanges: game row + outbox row (same transaction)
     Handler->>Handler: evict the games cache tag
-    DB-->>Bus: bus outbox delivers to topic kongroo-game-index-requested
+    DB-->>Bus: bus outbox publishes GameIndexRequested (SNS topic kongroo-game-index-requested)
     Bus-->>Consumer: queue catalog-game-index-requested
     Consumer->>DB: reload the game
     alt game exists
@@ -457,9 +454,8 @@ flowchart LR
 - In Redis the keys are `catalog:games:<id>` and siblings, plus HybridCache's tag key `catalog:__MSFT_HCT__games`
   (`redis-cli --scan`).
 - The effect is read on Grafana's **Catalog latency (p50 / p95) by route** panel (server side), driven by
-  `load/catalog-cache.js` (k6). Cloud day 1 on EKS, reviews read p95: 166 ms off → 8.8 ms Redis only → 4.8 ms
-  L1 + Redis. k6 on the laptop saw a smaller gap, because each request also carried about 125 ms of round trip
-  to `us-east-1`.
+  `load/catalog-cache.js` (k6); the steps and the measured numbers are in the README's
+  [Cache demo](./README.md#cache-demo).
 
 ## Gateway
 
@@ -497,7 +493,7 @@ sequenceDiagram
     Client->>Kong: POST /identity/users
     Kong->>Identity: POST /users
     Identity->>DB: INSERT users row + outbox row (same transaction)
-    Identity-->>Bus: publish UserCreatedIntegrationEvent (outbox → topic kongroo-user-created)
+    Identity-->>Bus: publish UserCreatedIntegrationEvent (outbox → SNS topic kongroo-user-created)
     Bus-->>Lambda: queue kongroo-notifications — log simulated welcome email (CloudWatch)
 ```
 
@@ -515,15 +511,15 @@ sequenceDiagram
     Client->>Kong: POST /catalog/orders (Bearer JWT)
     Kong->>Kong: verify HS256 signature + exp
     Kong->>Catalog: POST /orders
-    Catalog-->>Bus: OrderPlacedIntegrationEvent (outbox → topic kongroo-order-placed)
+    Catalog-->>Bus: OrderPlacedIntegrationEvent (outbox → SNS topic kongroo-order-placed)
     Bus-->>Payments: deliver via queue payments-order-placed-integration-event
     Note over Payments: IsApproved = TotalAmount <= ApprovalLimit
-    Payments-->>Bus: PaymentProcessedIntegrationEvent (topic kongroo-payment-processed)
+    Payments-->>Bus: PaymentProcessedIntegrationEvent (SNS topic kongroo-payment-processed)
     Bus-->>Catalog: queue catalog-payment-processed-integration-event — mark Paid, grant Ownership, evict games cache tag
     Bus-->>Lambda: queue kongroo-notifications — log purchase confirmation to CloudWatch
 ```
 
-Verified end to end on EKS on cloud day 1 by `eks/smoke.ps1` through the Classic Load Balancer: anonymous
-requests get 401; register → login → create and publish a game → order settles `Paid` → review in MongoDB →
+Verified end to end on EKS on cloud day 1 by `eks/smoke.ps1` through the Classic Load Balancer: Kong
+answers 401 to an anonymous call, a missing token and a tampered token; register → login → create and publish a game → order settles `Paid` → review in MongoDB →
 cached read; the Lambda logged the purchase confirmation for that order in CloudWatch; and a one-typo Game
 Search found the game. The three APIs ran at 2 replicas each from ECR SHA tags.
