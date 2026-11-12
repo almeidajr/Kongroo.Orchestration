@@ -18,6 +18,14 @@ patches:
       kind: Unused
       metadata:
         name: unused
+  # Kong's Classic LB is the only public entry point on EKS; Grafana is reached through kubectl port-forward.
+  - target:
+      kind: Service
+      name: ^grafana$
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: ClusterIP
 
 replicas:
   - name: identity-api
